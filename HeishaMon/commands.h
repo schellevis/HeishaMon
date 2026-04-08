@@ -71,7 +71,9 @@ unsigned int set_smart_dhw(char *msg, unsigned char *cmd, char *log_msg);
 unsigned int set_quiet_mode_priority(char *msg, unsigned char *cmd, char *log_msg);
 unsigned int set_pump_flowrate_mode(char *msg, unsigned char *cmd, char *log_msg);
 unsigned int set_dhw_sensor_selection(char *msg, unsigned char *cmd, char *log_msg);
-
+unsigned int set_dhw_heater_state(char *msg, unsigned char *cmd, char *log_msg);
+unsigned int set_room_heater_state(char *msg, unsigned char *cmd, char *log_msg);
+unsigned int set_heater_on_outdoor_temp(char *msg, unsigned char *cmd, char *log_msg);
 
 //optional pcb commands
 unsigned int set_heat_cool_mode(char *msg, char *log_msg);
@@ -164,6 +166,9 @@ const cmdStruct commands[] PROGMEM = {
   { "SetQuietModePriority", set_quiet_mode_priority },
   { "SetPumpFlowrateMode", set_pump_flowrate_mode },
   { "SetDHWSensorSelection", set_dhw_sensor_selection },
+  { "SetDHWHeaterState", set_dhw_heater_state },
+  { "SetRoomHeaterState", set_room_heater_state },
+  { "SetHeaterOnOutdoorTemp", set_heater_on_outdoor_temp },
 };
 
 struct optCmdStruct{
