@@ -72,7 +72,29 @@ Assuming that bytes from #129 to #138 are unique for each model of Aquarea heat 
 |65 | 62 D2 0B 45 54 42 D2 0B 72 66 | WH-ADC0309J3E5 | WH-UD09JE5-1 | KIT-ADC09JE5 | 9 | 1ph | HP - All-In-One J-series |
 |66 | E2 CF 0B 82 09 12 D0 0B 10 11 | WH-SDC12H6E5 | WH-UD12HE5 | KIT-WC012H6E5 | 12 | 1ph | HP |
 |67 | 42 D4 0B 83 71 32 D2 0C 45 55 | WH-ADC0309J3E5C | WH-UD05JE5 | KIT-ADC05JE5C | 5 | 1ph | HP - All-In-One J-series |
-
+|68 | 12 D7 0B 47 19 37 94 0E 83 10 | WH-ADC0316M9E83 | WH-WXG09ME8 | Monoblock | 9 | 3ph | T-CAP - M-series DHW 260l |
+|69 | E2 D5 0D 00 09 43 D6 0E 07 09 | WH-SDC09K3E8 | WH-UDZ09KE8 | KIT-WC09K3E8 | 9 | 3ph | HP |
+|70 | E2 CF 0B 84 05 12 D0 0B 93 05 | WH-SQC16H9E8 | WH-UQ16HE8 | KIT-WQC16H9E8 | 16 | 3ph | T-CAP - Bi-bloc H Serie |
+|71 | E2 D5 0B 35 99 83 92 0D 29 98 | WH-SDC0509L6E5 | WH-WDG09LE5 | KIT-WC09L6E5 | 9 | 1 ph | HP - split L-series 6kW elec heating |
+|72 | 12 D7 0B 98 14 35 94 0D 83 10 | WH-SDC0316M9E8 | WH-WXG09ME8 | Monoblock | 9 | 3ph | T-CAP - M-series  |
+|73 | E2 CF 0C 77 09 12 D0 0B 05 11 | WH-SXC09H3E5 | WH-UX09HE5 | KIT-WXC09H3E5 | 9 | 1ph | T-CAP |
+|74 | C2 D3 0D 33 65 B2 D3 0B 94 65 | Monoblock | WH-MDC05J3E5 | Monoblock | 5 | 1ph | HP - J Series |
+|75 | 12 D7 0D 98 14 37 94 0E 84 10 | WH-SDC0316M9E8 | WH-WXG12ME8 | KIT-SDCWXG12 | 12 | 3ph | T-CAP - M-series | 
+|76 | 12 D7 0D 98 11 39 94 0F 84 10 | WH-ADC0316M9E8AN2 | WH-WXG12ME8 | Monoblock | 12 | 3ph | T-CAP - M-series DHW 185l |
+|77 | 12 D7 0D 85 11 37 94 0E 84 10 | Monoblock | WH-WXG12ME8 | Monoblock | 12 | 3ph | T-CAP - M-series |
+|78 | E2 D5 0B 34 99 83 92 0D 29 98 | WH-SDC0509L3E5 | WH-WDG09LE5 | KIT-WC09L3E5 | 9 | 1 ph | HP - split L-series 3kW elec heating - revised model |
+|79 | E2 D5 0B 12 95 02 D6 0F 70 95 | WH-SXC12K6E5 | WH-UXZ12KE5 | KIT-WXC12K6E5 | 12 | 1 ph | T-CAP Bi-bloc K-series |
+|80 | 12 D7 0C 98 14 33 94 0C 83 10 | WH-SDC0316M9E8 | WH-WXG09ME8 | Monoblock | 9 | 3ph | T-CAP - M-series  |
+|81 | E2 D5 0D 99 94 02 D6 10 67 95 | WH-ADC0309K3E5 | WH-UDZ07KE5 | KIT-ADC07K3E5 | 7 | 1ph | HP - All-In-One K-series |
+|82 | E2 D5 0F 36 99 02 D6 10 68 95 | WH-ADC0309K3E5AN | WH-UDZ09KE5 | KIT-ADC09K3E5AN | 9 | 1ph | HP - All-In-One K-series - DHW 185l - AN |
+|83 | 42 D4 0B 83 71 42 D2 0B 72 66 | WH-ADC0309J3E5C | WH-UD09JE5-1 | KIT-ADC09JE5C-1 | 9 | 1ph | HP - All-In-One Compact J-series |
+|84 | E2 D5 0D 13 95 43 D6 0D 71 95 | WH-SXC09K3E8 | WH-UXZ09KE8 | - | 9 | 3ph | T-CAP
+|85 | E2 D5 0B 15 95 43 D6 0D 72 95 | WH-SXC12K9E8 | WH-UXZ12KE8 | KIT-WXC12K9E8 | 12 | 3ph | T-CAP - split K-series R32 |
+|86 | E2 D5 0C 00 09 43 D6 0D 07 09 | WH-SDC09K3E8 | WH-UDZ09KE8 | KIT-WC09K3E8 | 9 | 3ph | HP |
+|87 | 12 D7 0D 98 14 39 94 0F 83 10 | WH-SDC0316M9E8 | WH-WXG09ME8 | KIT-SDCWXG09 | 9 | 3ph | T-CAP - M-series; alt 61 | 
+|88 | E2 D5 0C 67 00 83 92 0D 29 98 | WH-ADC0509L3E5AN | WH-WDG09LE5 | KIT-ADC09L3E5AN | 9 | 1ph | HP - All-In-One L-series |
+|89 | 12 D7 0C 98 14 35 94 0D 84 10 | WH-SDC0316M9E8 | WH-WXG12ME8 | KIT-SDCWXG12 | 12 | 3ph | T-CAP - M-series |
+|90 | E2 D5 0D 99 94 02 D6 0F 68 95 | WH-ADC0309K3E5 | WH-UDZ09KE5 | KIT-ADC09K3E5 | 9 | 1ph | HP - All-In-One K-series |
 All bytes are used for Heat Pump model identification in the code.
 
-Note: These are the heat pump types that users have verified and reported back the model. HeishaMon should work with all H and J generation Aquarea heat pumps.
+Note: These are the heat pump types that users have verified and reported back the model. HeishaMon should work with all H,J and M generation Aquarea heat pumps.

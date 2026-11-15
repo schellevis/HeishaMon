@@ -2,7 +2,7 @@
 [![Build binary](https://github.com/the78mole/HeishaMon/actions/workflows/main.yml/badge.svg)](https://github.com/the78mole/HeishaMon/actions/workflows/main.yml)
 
 
-# Panasonic H, J, K & L Series Aquarea Luft-Wasser-Wärmepumpen Protokoll
+# Panasonic H, J, K, L & M Series Aquarea Luft-Wasser-Wärmepumpen Protokoll
 
 Dieses Projekt ermöglicht es, Informationen von der Panasonic Aquarea Wärmepumpe auszulesen und die Daten entweder an einen MQTT-Server zu senden oder als JSON-Format über HTTP bereitzustellen.
 
@@ -17,7 +17,7 @@ Die aktuelle Version findest du [hier](https://github.com/Egyras/HeishaMon/relea
 
 
 # Nutzung der Software
-HeishaMon ist in der Lage, mit der Panasonic Aquarea H, J, K und L-Serie zu kommunizieren. [Vom Benutzer bestätigte Wärmepumpentypen findest du hier](HeatPumpType.md) \
+HeishaMon ist in der Lage, mit der Panasonic Aquarea H-, J-, K-, L- und M-Serie zu kommunizieren. [Vom Benutzer bestätigte Wärmepumpentypen findest du hier](HeatPumpType.md) \
 Wenn du das Image selbst kompilieren möchtest, stelle sicher, dass du die genannten Bibliotheken und die Unterstützung für ein Dateisystem auf dem ESP8266 verwendest. Wähle dazu die korrekte Flash-Option in der Arduino IDE.
 
 Beim ersten Start ohne konfiguriertes WLAN wird ein offener WLAN-Hotspot sichtbar, der es dir ermöglicht, dein WLAN-Netzwerk und deinen MQTT-Server zu konfigurieren. Die Konfigurationsseite ist unter http://192.168.4.1 erreichbar. \
@@ -35,10 +35,26 @@ Das Firmware-Update ist so einfach wie das Aufrufen des Firmware-Menüs und nach
 
 Eine JSON-Ausgabe aller empfangenen Daten (Wärmepumpe und 1-Wire) ist unter der URL http://heishamon.local/json verfügbar (ersetze heishamon.local durch die IP-Adresse deines Heishamon-Geräts, wenn MDNS nicht funktioniert).
 
+Um einen einzelnen Wert abzufragen, füge eines dieser Argumente hinzu (eines pro Anfrage):
+
+| Argument | Wert | Beispiel | Liefert |
+|---|---|---|---|
+| `topic=` | eine Wärmepumpen-Topic-Nummer (`TOP1`, `XTOP3`, `OPT0`) oder einen Namen (`Main_Outlet_Temp`, Groß-/Kleinschreibung egal) | `/json?topic=Main_Outlet_Temp` | `{"Topic":"TOP6","Name":"Main_Outlet_Temp","Value":35,"Description":"°C"}` |
+| `opentherm=` | der Name eines OpenTherm-Werts | `/json?opentherm=roomTemp` | `{"roomTemp":{"type": "W","value":21.50}}` |
+| `1wire=` | Adresse oder Alias eines Sensors | `/json?1wire=28ff123456789abc` | der Eintrag des Sensors aus der `1wire`-Liste |
+| `s0=` | der S0-Port, `1` oder `2` | `/json?s0=1` | der Eintrag des Ports aus der `s0`-Liste, ohne `Watthour` |
+| `gpio=` | der MQTT-Name des GPIO, Groß-/Kleinschreibung egal (`extra/1`, oder `relay/one`/`relay/two` auf der großen Platine) oder nur die Nummer des Extra-GPIO | `/json?gpio=1` | der Eintrag des Pins aus der `gpio`-Liste; die Relais sind `gpio=relay/one` und `gpio=relay/two` |
+
+`Watthour` in der vollständigen Ausgabe ist die Energie seit der vorherigen `/json`-Anfrage, daher lassen einzelne S0-Anfragen ihn weg und setzen ihn nicht zurück. Ein unbekannter Wert, oder ein Abschnitt, der nicht aktiviert ist, liefert HTTP 404. Mehr als eines dieser Argumente in einer Anfrage liefert HTTP 400. Ein Wärmepumpen-Topic, das abgefragt wird, bevor Daten von der Wärmepumpe angekommen sind (nach dem Start, oder ohne angeschlossene Wärmepumpe), liefert HTTP 503.
+
 Im Ordner 'integrations' findest du Beispiele, wie du deine Automatisierungsplattform mit dem HeishaMon verbinden kannst.
 
 # Regeln-Funktionalität
 Die Regeln-Funktionalität ermöglicht es dir, die Wärmepumpe direkt vom HeishaMon aus zu steuern. Das macht es viel zuverlässiger als die Steuerung über externe Hausautomatisierung über WLAN. Wenn ein neues Regelwerk veröffentlicht wird, wird es sofort validiert und bei Gültigkeit übernommen. Wenn ein neues Regelwerk ungültig ist, wird es ignoriert und das alte Regelwerk wieder geladen. Du kannst die Konsole auf Rückmeldungen überprüfen. Falls ein neues gültiges Regelwerk den HeishaMon zum Absturz bringt, wird es beim nächsten Neustart automatisch deaktiviert, sodass du Änderungen vornehmen kannst. Dies verhindert eine Boot-Schleife des HeishaMon.
+
+Zur Überwachung gibt es die schreibgeschützten MQTT-Topics `<base>/rules/state` und `<base>/rules/executed`. `rules/state` meldet mit Retain `1`, wenn mindestens ein Regelblock geladen ist, andernfalls `0`. `rules/executed` meldet nach einer Regelausführung ein JSON-Ereignis ohne Retain (nur wenn **Publish rule executions to MQTT** in den Einstellungen aktiviert ist, standardmäßig aus) mit Regelname, Block-ID, Ergebniscode, Geräte-Uptime und der Kennzeichnung verschachtelter Hilfsblöcke. Bei äußeren Aufrufen wird zusätzlich die Laufzeit in Mikrosekunden mitgesendet. Der Standardwert für `<base>` ist `panasonic_heat_pump`. Payload-Details und Einschränkungen stehen in der [MQTT-Dokumentation](MQTT-Topics.md#rules-engine-status).
+
+Nicht jedes MQTT-Topic erhält eine `TOP…`-Nummer: `TOP…` kennzeichnet die normalen decodierten Wärmepumpenwerte, `XTOP…` den zusätzlichen Datenblock und `OPT…` die optionale Platine. Geräteinformationen und Ereignisse wie `LWT`, `log`, `stats`, `rules/state` und `rules/executed` werden separat ohne TOP-Nummer dokumentiert, ebenso die GPIO- und Relaiszustände (`gpio/...`). Die beiden Rules-Topics sind MQTT-Meldungen für externe Abonnenten und keine `@`-Variablen im Regelwerk.
 
 Die im Regelwerk verwendeten Techniken ermöglichen die Arbeit mit sehr großen Regelwerken, aber Best Practice ist es, sie unter 10.000 Bytes zu halten.
 
@@ -60,7 +76,7 @@ Diese Variablen leben innerhalb eines Regelblocks. Wenn ein Regelblock endet, we
 Diese sind dieselben wie in der Dokumentationsseite "Manage Topics" und auf der HeishaMon-Startseite aufgeführt. Das Regelwerk folgt auch der R/W-Logik, die über MQTT und REST API verwendet wird. Das bedeutet, dass sich die Lese-Topics von den Schreib-Topics unterscheiden. So erfolgt das Lesen des Wärmepumpenstatus über `@Heatpump_State`, das Ändern des Status über `@SetHeatpump`.
 
 - `%`: Datums- und Zeit-Variablen
-Diese können für datum- und zeitbasierte Regeln verwendet werden. Derzeit werden `%hour` (0-23), `%minute` (0-59), `%month` (1-12) und `day` (1-7) unterstützt. Alle sind einfache Integer. Eine ordnungsgemäße NTP-Konfiguration ist erforderlich, um das korrekte Systemdatum und die Systemzeit auf dem HeishaMon zu setzen.
+Diese können für datum- und zeitbasierte Regeln verwendet werden. Derzeit werden `%hour` (0-23), `%minute` (0-59), `%month` (1-12) und `%day` (1-7) unterstützt. Alle sind einfache Integer. Eine ordnungsgemäße NTP-Konfiguration ist erforderlich, um das korrekte Systemdatum und die Systemzeit auf dem HeishaMon zu setzen.
 
 - `?`: Thermostat-Parameter
 Diese Variablen spiegeln Parameter wider, die vom angeschlossenen Thermostat gelesen werden, wenn die OpenTherm-Funktionalität verwendet wird. Die Namen sind für Lesen und Schreiben identisch, aber nicht alle Werte unterstützen Lesen und/oder Schreiben. Der OpenTherm-Tab listet dies auch auf.
@@ -141,6 +157,7 @@ Reguläre Operatoren werden mit ihrer Standard-Assoziativität und -Präzedenz u
 - `&&`: Und
 - `||`: Oder
 - `==`: Gleich
+- `!=`: Ungleich
 - `>=`: Größer oder gleich
 - `>`: Größer als
 - `<`: Kleiner als
@@ -165,7 +182,7 @@ Gibt den maximalen Wert der Eingabeparameter zurück.
 Gibt den minimalen Wert der Eingabeparameter zurück.
 
 - `isset`
-Gibt den booleschen Wert true zurück, wenn die Eingabevariable noch `NULL` ist. In allen anderen Fällen gibt sie false zurück.
+Gibt `1` zurück, wenn die Eingabevariable einen Zahlenwert hat, und `0`, wenn sie noch `NULL` ist (ein Textwert gibt ebenfalls `0` zurück). Damit wird auf `NULL` geprüft: Ein Vergleich mit `NULL` (z. B. `#g == NULL`) ergibt immer `NULL` und damit false, daher stattdessen `if isset(#g) == 0 then` schreiben.
 
 - `round`
 Rundet den Eingabe-Float auf die nächste ganze Zahl.
@@ -363,6 +380,16 @@ Bis heute wissen wir nicht, wie die an die Wärmepumpe gesendeten Befehle in der
 Die Software unterstützt auch das Auslesen von DS18B20 1-Wire-Temperatursensoren. Eine korrekte 1-Wire-Konfiguration (mit 4,7kOhm Pull-up-Widerstand) an GPIO4 wird alle konfigurierten Sekunden (mindestens 5) gelesen und an das Topic panasonic_heat_pump/1wire/"sensor-hex-adresse" gesendet. Auf den vorgefertigten Boards ist dieser 4,7kOhm-Widerstand bereits installiert.
 
 ## Relaissteuerung auf der großen Platine
+
+Die Firmware veröffentlicht die ausgelesenen Relais-Ausgangszustände als `0` (aus) oder `1` (ein) mit MQTT-Retain:
+
+| Relais | Status-Topic (bei Standard-Basistopic) |
+| --- | --- |
+| 1 | `panasonic_heat_pump/gpio/relay/one/state` |
+| 2 | `panasonic_heat_pump/gpio/relay/two/state` |
+
+Die Meldung erfolgt bei jeder Änderung des Ausgangs, egal wodurch (MQTT, REST, Modbus oder eine Rule), und erneut nach jeder MQTT-(Wieder-)Verbindung. Befehle gehen an die Topics ohne `/state`; HeishaMon reagiert nie auf seine eigenen `/state`-Topics, daher kann eine Statusmeldung nicht als Befehl zurückkommen. Nach einem Neustart werden die Ausgänge einmalig aus ihren retained `/state`-Topics wiederhergestellt, außer sie wurden seit dem Start bereits durch einen Befehl oder eine Rule geschaltet. Bei einem anderen MQTT-Basistopic wird dieses auch für die Status-Topics verwendet. Der Status bestätigt den GPIO-Ausgangszustand; eine mechanische Rückmeldung des Relaiskontakts gibt es nicht.
+
 Der neuere, große, Heishamon enthält zwei eingebaute Relais, die über MQTT-Befehle ein- und ausgeschaltet werden können. Die Relais können für jede Kontaktschaltung verwendet werden, auch 230V Netzspannung (max. 5A). Um das Relais zu steuern, sende einfach einen Wert von 1 oder 0 an das MQTT-Topic "panasonic_heat_pump/gpio/relay/one" für Relais eins oder "panasonic_heat_pump/gpio/relay/two" für Relais zwei.
 
 ## Benutzerkonfigurierbare Extra-GPIOs
@@ -382,7 +409,7 @@ panasonic_heat_pump/gpio/extra/N
 wobei `N` der 1-basierte Index des Extra-GPIO ist (z.B. `extra/1` für den ersten Extra-Pin).
 
 **GPIO-Zustände über MQTT lesen:**
-Eingangs- und Ausgangszustände werden automatisch bei Änderungen und beim ersten MQTT-Connect (retained) an dieselben Topics veröffentlicht.
+Eingangs- und Ausgangszustände werden (retained) an `panasonic_heat_pump/gpio/extra/N/state` bei jeder Änderung und nach jeder MQTT-(Wieder-)Verbindung veröffentlicht. Eingänge werden zusätzlich im konfigurierten Intervall (`updateAllTime`) erneut gesendet. Die Ausgänge werden nach einem Neustart wie die Relais aus ihren retained `/state`-Topics wiederhergestellt.
 
 **HTTP API:**
 Alle Extra-GPIO-Zustände können als JSON über eine GET-Anfrage gelesen werden:
@@ -391,14 +418,15 @@ GET /gpio
 ```
 Beispielantwort:
 ```json
-[{"pin":33,"mode":2,"state":1},{"pin":34,"mode":0,"state":0}, ...]
+[{"pin":33,"mode":2,"state":1,"name":"extra/1","topic":"panasonic_heat_pump/gpio/extra/1/state"}, ...]
 ```
-wobei `mode` 0 = Eingang (Pull-up), 1 = Eingang, 2 = Ausgang bedeutet.
+wobei `pin` die physische Pinnummer ist, `mode` 0 = Eingang (Pull-up), 1 = Eingang, 2 = Ausgang, `name` der MQTT-Name und `topic` das MQTT-State-Topic. Auf der großen Platine stehen auch die Relais (`relay/one`, `relay/two`) in dieser Liste.
 
-Einen Ausgangspin per HTTP POST setzen:
+Einen Ausgangspin setzen, mit der physischen Pinnummer:
 ```
-POST /gpio?pin=N&value=1
+GET /gpio?pin=33&value=1
 ```
+Die Reihenfolge der Argumente ist egal. Fehlt eines, oder ist der Pin kein verfügbarer Ausgang, lautet die Antwort HTTP 400 mit einem `error`.
 
 **Extra-GPIOs in Regeln verwenden:**
 Die `gpio()`-Regelfunktion funktioniert mit den Extra-GPIO-Pins über ihre physische Pin-Nummer, genauso wie die Relais-Pins.
@@ -449,3 +477,6 @@ TLS-Unterstützung für MQTT ist derzeit nur für die ESP32-Version implementier
 [IOBroker-Anleitung](Integrations/ioBroker_manual)
 
 [Domoticz](Integrations/Domoticz)
+
+## Lizenz
+HeishaMon steht unter der [Mozilla Public License 2.0](LICENSE) (MPL-2.0). Das gilt für alle Dateien in diesem Repository, die keinen anderen Lizenz-Header tragen. Einige enthaltene Dateien und die in die Firmware gelinkten Bibliotheken haben eigene Lizenzen, siehe [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

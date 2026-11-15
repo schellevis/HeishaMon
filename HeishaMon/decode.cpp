@@ -9,6 +9,27 @@ unsigned long lastalldatatime = 0;
 unsigned long lastallextradatatime = 0;
 unsigned long lastalloptdatatime = 0;
 
+String getRawByte(byte input) {
+  return String(input);
+}
+
+String getHeaterCapacity(byte input) {
+  int encoded = (input >> 2) & 0b11;
+  return String(encoded == 0 ? -1 : encoded * 3);
+}
+
+String getIntMinus1Times30(byte input) {
+  return String(((int)input - 1) * 30);
+}
+
+String getZone2Active(byte input) {
+  return String((input >> 1) & 1);
+}
+
+String getZone1Active(byte input) {
+  return String(input & 1);
+}
+
 String getBit1(byte input) {
   return String(input  >> 7);
 }
@@ -67,6 +88,29 @@ String getIntMinus1Times10(byte input) {
 String getIntMinus1Times50(byte input) {
   int value = (int)input - 1;
   return (String)(value * 50);
+}
+
+// Nibble fields (minutes / 5 + 1): low nibble of byte 33 / 34 and high nibble of byte 33
+String getLowNibbleMinus1Times5(byte input) {
+  return String(((int)(input & 0x0F) - 1) * 5);
+}
+
+String getHighNibbleMinus1Times5(byte input) {
+  return String(((int)(input >> 4) - 1) * 5);
+}
+
+// kW with one decimal: (value - 1) / 10 (SG ready power consumption limits)
+String getIntMinus1Div10(byte input) {
+  return String((((float)input - 1) / 10), 1);
+}
+
+// Nibble fields (offset in K / 0.5 + 8): sensor offsets in byte 35
+String getLowNibbleOffset(byte input) {
+  return String((((int)(input & 0x0F) - 8) / 2.0f), 1);
+}
+
+String getHighNibbleOffset(byte input) {
+  return String((((int)(input >> 4) - 8) / 2.0f), 1);
 }
 
 
@@ -148,6 +192,23 @@ String getErrorInfo(char* data) { // TOP44 //
   return String(Error_string);
 }
 
+
+static uint16_t enabledTopicGroups = TOPIC_GROUPS_DEFAULT;
+
+void setTopicGroups(uint16_t groups) {
+  groups |= (1 << TG_BASIC);
+  if (groups & ~enabledTopicGroups) {
+    lastalldatatime = 0; // publish the topics of a newly enabled group straight away
+  }
+  enabledTopicGroups = groups;
+}
+
+bool topicEnabled(unsigned int Topic_Number) {
+  if (Topic_Number >= NUMBER_OF_TOPICS) {
+    return false;
+  }
+  return (enabledTopicGroups >> pgm_read_byte(&topicGroup[Topic_Number])) & 1;
+}
 
 void resetlastalldatatime() {
   lastalldatatime = 0;
@@ -289,6 +350,17 @@ String getSecondByte(byte input) {
 
 
 // Decode ////////////////////////////////////////////////////////////////////////////
+// Description of a mode value: desc[0] is the number of modes, desc[1..n] their names.
+// A value out of range (for example both bits set on a 2-bit field) gives "unknown"
+// instead of reading past the end of the description array.
+static const char *modeDescription(const char **desc, int value) {
+  int maxvalue = atoi(desc[0]);
+  if ((value < 0) || (value >= maxvalue)) {
+    return "unknown";
+  }
+  return desc[value + 1];
+}
+
 void decode_heatpump_data(char* data, char* actData, PubSubClient &mqtt_client, void (*log_message)(char*), char* mqtt_topic_base, unsigned int updateAllTime) {
   bool updateTime = false;
   bool updateTopic[NUMBER_OF_TOPICS] = { false };
@@ -305,7 +377,7 @@ void decode_heatpump_data(char* data, char* actData, PubSubClient &mqtt_client, 
       updateTopic[Topic_Number] = true;
     }
 
-    if (updateTime || updateTopic[Topic_Number]) {
+    if ((updateTime || updateTopic[Topic_Number]) && topicEnabled(Topic_Number)) {
       char log_msg[256];
       char mqtt_topic[256];
       sprintf_P(log_msg, PSTR("received TOP%d %s: %s"), Topic_Number, topics[Topic_Number], Topic_Value.c_str());
@@ -322,14 +394,16 @@ void decode_heatpump_data(char* data, char* actData, PubSubClient &mqtt_client, 
       String dataValue = getDataValue(actData, Topic_Number);
       if (maxvalue == 0) { //this takes the special case where the description is a real value description instead of a mode, so get description index 1
         if ((Topic_Number != 44) && (Topic_Number != 92)) {
-          sprintf_P(log_msg, PSTR("{\"data\": {\"heishavalues\": {\"topic\": \"TOP%u\", \"value\": %s, \"description\": \"%s\"}}}"), Topic_Number, dataValue.c_str(),topicDescription[Topic_Number][1]);
+          snprintf_P(log_msg, sizeof(log_msg), PSTR("{\"data\": {\"heishavalues\": {\"topic\": \"TOP%u\", \"value\": %s, \"description\": \"%s\"}}}"), Topic_Number, dataValue.c_str(),topicDescription[Topic_Number][1]);
         } else {
-          sprintf_P(log_msg, PSTR("{\"data\": {\"heishavalues\": {\"topic\": \"TOP%u\", \"value\": \"%s\", \"description\": \"%s\"}}}"), Topic_Number, dataValue.c_str(),topicDescription[Topic_Number][1]);
+          snprintf_P(log_msg, sizeof(log_msg), PSTR("{\"data\": {\"heishavalues\": {\"topic\": \"TOP%u\", \"value\": \"%s\", \"description\": \"%s\"}}}"), Topic_Number, dataValue.c_str(),topicDescription[Topic_Number][1]);
         }
       } else {
-        sprintf_P(log_msg, PSTR("{\"data\": {\"heishavalues\": {\"topic\": \"TOP%u\", \"value\": %s, \"description\": \"%s\"}}}"), Topic_Number, dataValue.c_str(),topicDescription[Topic_Number][dataValue.toInt() + 1]);
+        snprintf_P(log_msg, sizeof(log_msg), PSTR("{\"data\": {\"heishavalues\": {\"topic\": \"TOP%u\", \"value\": %s, \"description\": \"%s\"}}}"), Topic_Number, dataValue.c_str(),modeDescription(topicDescription[Topic_Number], dataValue.toInt()));
       }
-      websocket_write_all(log_msg, strlen(log_msg));          
+      if (topicEnabled(Topic_Number)) {
+        websocket_write_all(log_msg, strlen(log_msg));
+      }
       rules_event_cb(_F("@"), topics[Topic_Number]);
     }
   }
@@ -367,9 +441,9 @@ void decode_heatpump_data_extra(char* data, char* actDataExtra, PubSubClient &mq
       int maxvalue = atoi(xtopicDescription[Topic_Number][0]);
       String dataValue = getDataValueExtra(actDataExtra, Topic_Number);
       if (maxvalue == 0) { //this takes the special case where the description is a real value description instead of a mode, so get description index 1
-        sprintf_P(log_msg, PSTR("{\"data\": {\"heishavalues\": {\"topic\": \"XTOP%u\", \"value\": %s, \"description\": \"%s\"}}}"), Topic_Number, dataValue.c_str(),xtopicDescription[Topic_Number][1]);
+        snprintf_P(log_msg, sizeof(log_msg), PSTR("{\"data\": {\"heishavalues\": {\"topic\": \"XTOP%u\", \"value\": %s, \"description\": \"%s\"}}}"), Topic_Number, dataValue.c_str(),xtopicDescription[Topic_Number][1]);
       } else {
-        sprintf_P(log_msg, PSTR("{\"data\": {\"heishavalues\": {\"topic\": \"XTOP%u\", \"value\": %s, \"description\": \"%s\"}}}"), Topic_Number, dataValue.c_str(),xtopicDescription[Topic_Number][dataValue.toInt() + 1]);
+        snprintf_P(log_msg, sizeof(log_msg), PSTR("{\"data\": {\"heishavalues\": {\"topic\": \"XTOP%u\", \"value\": %s, \"description\": \"%s\"}}}"), Topic_Number, dataValue.c_str(),modeDescription(xtopicDescription[Topic_Number], dataValue.toInt()));
       }
       websocket_write_all(log_msg, strlen(log_msg));         
       rules_event_cb(_F("@"), xtopics[Topic_Number]);
@@ -416,9 +490,9 @@ void decode_optional_heatpump_data(char* data, char* actOptData, PubSubClient & 
       int maxvalue = atoi(opttopicDescription[Topic_Number][0]);
       String dataValue = getOptDataValue(actOptData, Topic_Number);
       if (maxvalue == 0) { //this takes the special case where the description is a real value description instead of a mode, so get description index 1
-        sprintf_P(log_msg, PSTR("{\"data\": {\"heishavalues\": {\"topic\": \"OPT%u\", \"value\": %s, \"description\": \"%s\"}}}"), Topic_Number, dataValue.c_str(),opttopicDescription[Topic_Number][1]);
+        snprintf_P(log_msg, sizeof(log_msg), PSTR("{\"data\": {\"heishavalues\": {\"topic\": \"OPT%u\", \"value\": %s, \"description\": \"%s\"}}}"), Topic_Number, dataValue.c_str(),opttopicDescription[Topic_Number][1]);
       } else {
-        sprintf_P(log_msg, PSTR("{\"data\": {\"heishavalues\": {\"topic\": \"OPT%u\", \"value\": %s, \"description\": \"%s\"}}}"), Topic_Number, dataValue.c_str(),opttopicDescription[Topic_Number][dataValue.toInt() + 1]);
+        snprintf_P(log_msg, sizeof(log_msg), PSTR("{\"data\": {\"heishavalues\": {\"topic\": \"OPT%u\", \"value\": %s, \"description\": \"%s\"}}}"), Topic_Number, dataValue.c_str(),modeDescription(opttopicDescription[Topic_Number], dataValue.toInt()));
       }      
       websocket_write_all(log_msg, strlen(log_msg));
       rules_event_cb(_F("@"), optTopics[Topic_Number]);
