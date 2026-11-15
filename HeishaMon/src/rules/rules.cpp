@@ -1923,8 +1923,15 @@ static int32_t vm_heap_next(struct rules_t *obj, uint8_t type, uint8_t skip) {
   switch(type) {
     case VNULL: {
       for(i=4;i<ret;i+=rule_max_var_bytes()) {
-        if(gettype(obj->heap->buffer[i]) == VNULL) {
-          if(cnt >= skip && get_group(obj->heap->buffer[i]) == 0) {
+        /*
+         * Only group 0 slots are temporary slots. A literal
+         * NULL constant is a VNULL slot in group 1 and must
+         * not be counted, else the skip count is off by one
+         * and two values get the same slot (#1009).
+         */
+        if(gettype(obj->heap->buffer[i]) == VNULL &&
+           get_group(obj->heap->buffer[i]) == 0) {
+          if(cnt >= skip) {
             return i;
           }
           cnt++;
@@ -2024,6 +2031,7 @@ static void bc_assign_slots(struct rules_t *obj) {
       }
     }
     end = a;
+    start = end;
 
     for(a=end;a<getval(obj->bc.nrbytes);a = bc_next(obj, a)) {
       if(a == -1) {
@@ -2060,15 +2068,15 @@ static void bc_assign_slots(struct rules_t *obj) {
            gettype(obj->bc.buffer[a]) == OP_RET)) {
           end = c;
           break;
-        } else if((c = bc_next(obj, a)) >= 0 &&
-          gettype(obj->bc.buffer[a]) == OP_SETVAL &&
-            (gettype(obj->bc.buffer[c]) == OP_SETVAL ||
-             gettype(obj->bc.buffer[c]) == OP_GETVAL)
-          ) {
-          end = a;
-          break;
-        } else if((c = bc_before(a)) >= 0 &&
-          gettype(obj->bc.buffer[a]) == OP_SETVAL && gettype(obj->bc.buffer[c]) == OP_GETVAL) {
+        } else if(gettype(obj->bc.buffer[a]) == OP_SETVAL ||
+                  gettype(obj->bc.buffer[a]) == OP_CLEAR) {
+          /*
+           * An assignment or a call statement closes an
+           * independent statement. Without this split the
+           * temporary slot counter of the next pass runs
+           * negative over several statements and collides
+           * with the heap slots of constants (#1006).
+           */
           end = a;
           break;
         }
@@ -2200,6 +2208,9 @@ static void bc_assign_slots(struct rules_t *obj) {
         continue;
       }
       if(gettype(obj->bc.buffer[a]) == OP_CLEAR) {
+        continue;
+      }
+      if(gettype(obj->bc.buffer[a]) == OP_CALL && getval(x->a) == 0) {
         continue;
       }
       if(d >= min) {
@@ -3357,6 +3368,14 @@ static int16_t rule_create(char **text, struct rules_t *obj) {
               case TEVENT:
               case TFUNCTION:
               case LPAREN: {
+                /*
+                 * A call/expression statement is followed by a sibling
+                 * statement (nested if, event, or function call) rather
+                 * than closing the block. Reset mathcnt here too, for the
+                 * same reason as the TEND case below (#894): otherwise it
+                 * leaks into the next statement's slot allocation.
+                 */
+                mathcnt = 0;
                 go = type;
                 ret = TIF;
                 continue;
@@ -3374,6 +3393,14 @@ static int16_t rule_create(char **text, struct rules_t *obj) {
                   return -1;
                   /* LCOV_EXCL_STOP*/
                 }
+                /*
+                 * A call/expression statement closes this if-block. Reset the
+                 * temporary slot counter so a following sibling if-condition
+                 * starts fresh. Otherwise mathcnt leaks across the block and
+                 * bc_parse_math_order's backward slot search overshoots into
+                 * this block, relocating its trailing logical operator (#894).
+                 */
+                mathcnt = 0;
                 go = TEND;
                 ret = TIF;
                 continue;
@@ -4648,7 +4675,7 @@ int8_t rule_run(struct rules_t *obj, uint8_t validate) {
     if(t == 1 || validate == 1) {
       pos += sizeof(struct vm_top_t);
     } else {
-      pos += (sizeof(struct vm_top_t)*(int8_t)getval(node->a));
+      pos += (sizeof(struct vm_top_t)*(uint8_t)getval(node->a));
     }
 
     t = 0;

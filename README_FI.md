@@ -2,7 +2,7 @@
 [![Build binary](https://github.com/the78mole/HeishaMon/actions/workflows/main.yml/badge.svg)](https://github.com/the78mole/HeishaMon/actions/workflows/main.yml)
 
 
-# Panasonic Aquarea H-, J-, K- ja L-sarjan vesi-ilmalämpöpumpun protokollaa lukeva IoT-laite
+# Panasonic Aquarea H-, J-, K-, L- ja M-sarjan vesi-ilmalämpöpumpun protokollaa lukeva IoT-laite
 
 Tämä projekti mahdollistaa Panasonic Aquarea vesi-ilmalämpöpumppujen toimittamien tietojen raportoimisen MQTT-palvelimelle tai JSON-muodossa HTTP:n kautta.
 
@@ -17,7 +17,7 @@ Viimeisin julkaistu versio on saatavilla [täältä](https://github.com/Egyras/H
 
 
 # Käyttö
-Nykyinen Arduino-softa pystyy kommunikoimaan Panasonicin Aquarea H, J, K ja L-sarjan vesi-ilmalämpöpumppujen kanssa. [Käyttäjien vahvistamia lämpöpumppumalleja löytyy täältä](HeatPumpType.md) \
+Nykyinen Arduino-softa pystyy kommunikoimaan Panasonicin Aquarea H-, J-, K-, L- ja M-sarjan vesi-ilmalämpöpumppujen kanssa. [Käyttäjien vahvistamia lämpöpumppumalleja löytyy täältä](HeatPumpType.md) \
 Jos haluat kääntää softan itse, niin lataa kaikki tarvittavat kirjastot ja muista myös filesystem-tuki ESP8266:lle Arduino IDE:ssä.
 
 Kun ensimmäisen kerran kytket virrat laitteeseen, kytkeydy HeishaMonin tarjoamaan avoimeen WiFi-hotspotiin, jota käytetään ensimmäisen käynnistyksen yhteydessä asetusten tekemiseen. Asetussivu löytyy osoitteesta http://192.168.4.1 ja sieltä voit määrittää WiFi-verkon ja MQTT-palvelimen asetukset. \
@@ -34,6 +34,18 @@ HeishaMon voi myös lukea kahden kWh-mittarin S0-portista sähkönkulutusta. Kyt
 Firmwaren voi päivittää laitteen konfigurointisivun kautta kirjautumalla tunnuksella 'admin' ja valitsemallasi salasanalla (oletus on 'heisha').
 
 JSON-muodossa lämpöpumpun tilan voi hakea osoitteesta http://heishamon.local/json (korvaa heishamon.local laitteesi IP-osoitteella, jos MDNS ei toimi verkossasi).
+
+Jos haluat vain yhden arvon, lisää yksi näistä parametreista (yksi per pyyntö):
+
+| Parametri | Arvo | Esimerkki | Palauttaa |
+|---|---|---|---|
+| `topic=` | lämpöpumpun topicin numero (`TOP1`, `XTOP3`, `OPT0`) tai nimi (`Main_Outlet_Temp`, kirjainkoolla ei väliä) | `/json?topic=Main_Outlet_Temp` | `{"Topic":"TOP6","Name":"Main_Outlet_Temp","Value":35,"Description":"°C"}` |
+| `opentherm=` | OpenTherm-arvon nimi | `/json?opentherm=roomTemp` | `{"roomTemp":{"type": "W","value":21.50}}` |
+| `1wire=` | anturin osoite tai alias | `/json?1wire=28ff123456789abc` | anturin rivi `1wire`-listasta |
+| `s0=` | S0-portti, `1` tai `2` | `/json?s0=1` | portin rivi `s0`-listasta, ilman `Watthour`-arvoa |
+| `gpio=` | GPIO:n MQTT-nimi, kirjainkoolla ei väliä (`extra/1`, tai isolla piirilevyllä `relay/one`/`relay/two`) tai pelkkä extra-GPIO:n numero | `/json?gpio=1` | pinnin rivi `gpio`-listasta; releet ovat `gpio=relay/one` ja `gpio=relay/two` |
+
+Täyden tulosteen `Watthour` on energia edellisestä `/json`-pyynnöstä, joten yksittäiset S0-pyynnöt jättävät sen pois eivätkä nollaa sitä. Tuntematon arvo, tai osio joka ei ole käytössä, palauttaa HTTP 404. Useampi näistä parametreista samassa pyynnössä palauttaa HTTP 400. Lämpöpumpun topic, jota pyydetään ennen kuin lämpöpumpulta on saapunut dataa (käynnistyksen jälkeen, tai ilman kytkettyä lämpöpumppua), palauttaa HTTP 503.
 
 'integrations'-hakemistosta löydät esimerkkejä laitteen integroimisesta erilaisiin kotiautomaatiojärjestelmiin.
 
@@ -60,7 +72,7 @@ Nämä muuttujat elävät sääntöblokin sisällä. Kun sääntöblokki päätt
 Nämä ovat samat kuin Manage Topics -dokumentaatiosivulla ja HeishaMonin etusivulla listatut. Sääntöjoukko noudattaa myös MQTT:n ja REST API:n kautta käytettävää R/W-logiikkaa. Tämä tarkoittaa, että lukuaihiot eroavat kirjoitusaihioista. Lämpöpumpun tilan lukeminen tapahtuu `@Heatpump_State`:lla, tilan muuttaminen `@SetHeatpump`:lla.
 
 - `%`: Päivämäärä- ja aikamuuttujat
-Näitä voidaan käyttää päivämäärä- ja aikapohjaisiin sääntöihin. Tällä hetkellä tuetaan `%hour` (0-23), `%minute` (0-59), `%month` (1-12) ja `day` (1-7). Kaikki ovat tavallisia kokonaislukuja. Oikea NTP-konfiguraatio tarvitaan oikean järjestelmäpäivämäärän ja -ajan asettamiseen HeishaMoniin.
+Näitä voidaan käyttää päivämäärä- ja aikapohjaisiin sääntöihin. Tällä hetkellä tuetaan `%hour` (0-23), `%minute` (0-59), `%month` (1-12) ja `%day` (1-7). Kaikki ovat tavallisia kokonaislukuja. Oikea NTP-konfiguraatio tarvitaan oikean järjestelmäpäivämäärän ja -ajan asettamiseen HeishaMoniin.
 
 - `?`: Termostaattiparametrit
 Nämä muuttujat heijastavat parametreja, jotka luetaan yhdistetyltä termostaatilta OpenTherm-toiminnallisuutta käytettäessä. Nimet ovat samat lukemiseen ja kirjoittamiseen, mutta kaikki arvot eivät tue lukemista ja/tai kirjoittamista.
@@ -141,6 +153,7 @@ Tavallisia operaattoreita tuetaan standardisella assosiatiivisuudella ja priorit
 - `&&`: Ja
 - `||`: Tai
 - `==`: Yhtä suuri
+- `!=`: Erisuuri kuin
 - `>=`: Suurempi tai yhtä suuri
 - `>`: Suurempi kuin
 - `<`: Pienempi kuin
@@ -165,7 +178,7 @@ Palauttaa syöteparametrien maksimiarvo.
 Palauttaa syöteparametrien minimiarvo.
 
 - `isset`
-Palauttaa boolean true, kun syötemuuttuja on vielä `NULL`, muissa tapauksissa false.
+Palauttaa `1`, kun syötemuuttujalla on numeroarvo, ja `0`, kun se on vielä `NULL` (myös merkkijonoarvo palauttaa `0`). Käytä tätä `NULL`-arvon testaamiseen: vertailu `NULL`-arvoon (esim. `#g == NULL`) antaa aina `NULL`, joka on false, joten kirjoita sen sijaan `if isset(#g) == 0 then`.
 
 - `round`
 Pyöristää syöte-floatin lähimpään kokonaislukuun.
@@ -382,7 +395,7 @@ panasonic_heat_pump/gpio/extra/N
 jossa `N` on ylimääräisen GPIO:n 1-perusteinen indeksi (esim. `extra/1` ensimmäiselle ylimääräiselle pinnille).
 
 **GPIO-tilojen lukeminen MQTT:n kautta:**
-Tulo- ja lähtötilat julkaistaan automaattisesti samoihin aiheisiin muutoksen yhteydessä ja ensimmäisellä MQTT-yhteydellä (retained).
+Tulo- ja lähtötilat julkaistaan (retained) aiheeseen `panasonic_heat_pump/gpio/extra/N/state` jokaisen muutoksen yhteydessä ja jokaisen MQTT-(uudelleen)yhdistämisen jälkeen. Tulot lähetetään lisäksi uudelleen asetetulla välillä (`updateAllTime`). Releet toimivat samoin (`gpio/relay/one/state`, `gpio/relay/two/state`). HeishaMon ei koskaan reagoi omiin `/state`-aiheisiinsa, paitsi kerran käynnistyksen jälkeen: silloin lähdöt palautetaan viimeisimpään tunnettuun (retained) tilaan, ellei komento tai sääntö ole jo kytkenyt niitä käynnistyksen jälkeen.
 
 **HTTP API:**
 Kaikki ylimääräiset GPIO-tilat voidaan lukea JSON-muodossa GET-pyynnöllä:
@@ -391,14 +404,15 @@ GET /gpio
 ```
 Esimerkkivastaus:
 ```json
-[{"pin":33,"mode":2,"state":1},{"pin":34,"mode":0,"state":0}, ...]
+[{"pin":33,"mode":2,"state":1,"name":"extra/1","topic":"panasonic_heat_pump/gpio/extra/1/state"}, ...]
 ```
-jossa `mode` on 0 = Tulo (pull-up), 1 = Tulo, 2 = Lähtö.
+jossa `pin` on fyysinen pinninumero, `mode` 0 = Tulo (pull-up), 1 = Tulo, 2 = Lähtö, `name` MQTT-nimi ja `topic` MQTT-tila-aihe. Isolla piirilevyllä listassa ovat myös releet (`relay/one`, `relay/two`).
 
-Lähtöpinnin asettaminen HTTP POST:lla:
+Lähtöpinnin asettaminen fyysisellä pinninumerolla:
 ```
-POST /gpio?pin=N&value=1
+GET /gpio?pin=33&value=1
 ```
+Parametrien järjestyksellä ei ole väliä. Jos jompikumpi puuttuu, tai pinni ei ole käytettävissä oleva lähtö, vastaus on HTTP 400 ja `error`-viesti.
 
 **Ylimääräisten GPIO:iden käyttö säännöissä:**
 `gpio()`-sääntöfunktio toimii ylimääräisten GPIO-pinnien kanssa niiden fyysisen pinnin numeron kautta, samoin kuin relepinnit.
@@ -449,3 +463,6 @@ TLS-tuki MQTT:lle on tällä hetkellä toteutettu vain ESP32-versiolle. TLS on o
 [IOBroker Manual](Integrations/ioBroker_manual)
 
 [Domoticz](Integrations/Domoticz)
+
+## Lisenssi
+HeishaMon on lisensoitu [Mozilla Public License 2.0](LICENSE) -lisenssillä (MPL-2.0). Lisenssi koskee kaikkia tämän repositorion tiedostoja, joissa ei ole muuta lisenssiotsaketta. Osalla mukana olevista tiedostoista ja laiteohjelmistoon linkitetyistä kirjastoista on oma lisenssinsä, katso [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

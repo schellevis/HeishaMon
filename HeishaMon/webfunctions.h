@@ -17,6 +17,7 @@
 #include "s0.h"
 #include "HeishaOT.h"
 #include "gpio.h"
+#include "decode.h"
 
 #define HEATPUMP_VALUE_LEN    16
 
@@ -45,6 +46,7 @@ struct settingsStruct {
   char wifi_ssid[33] = "";
   char wifi_password[PASSWORD_LENGTH] = "";
   char wifi_hostname[40] = "HeishaMon";
+  char description[64] = "";
   char ota_password[40] = "heisha";
   char mqtt_server[65];
   char mqtt_port[6] = "1883";
@@ -57,6 +59,7 @@ struct settingsStruct {
 #endif
 
   bool force_rules = false; //force rules on boot, even after a crash
+  bool rules_mqtt_events = false; //publish an event to <base>/rules/executed for every rule run
   bool listenonly = false; //listen only so heishamon can be installed parallel to cz-taw1, set commands will not work though
   bool optionalPCB = false; //do we emulate an optional PCB?
   bool use_1wire = false; //1wire enabled?
@@ -66,8 +69,12 @@ struct settingsStruct {
   bool logSerial1 = true; //log to serial1 (gpio2) from start
   bool opentherm = false; //opentherm enable flag
   bool hotspot = true; //enable wifi hotspot when wifi is not connected
+  uint16_t topicGroups = TOPIC_GROUPS_DEFAULT; //bit per topic group (decode.h), a cleared bit stops publishing those topics
 #ifdef ESP32
   bool proxy = true; //cztaw proxy port enable flag
+  bool ethernet = true; //probe for W5500 ethernet module at boot (disable on boards without it)
+  bool modbus = false; //modbus tcp server enable flag
+  bool modbusWrites = false; //allow modbus clients to write commands and relays
 #endif
   s0SettingsStruct s0Settings[NUM_S0_COUNTERS];
   gpioSettingsStruct gpioSettings;
@@ -83,6 +90,9 @@ void setupConditionals();
 int getFreeMemory(void);
 char *getUptime(void);
 void setupWifi(settingsStruct *heishamonSettings);
+#if defined(ESP8266)
+void wifiBeginStrongest(const char *ssid, const char *password);
+#endif
 int getWifiQuality(void);
 int getFreeMemory(void);
 void ntpReload(settingsStruct *heishamonSettings);
@@ -91,6 +101,7 @@ void log_message(char *string);
 int8_t webserver_cb(struct webserver_t *client, void *data);
 void getWifiScanResults(int numSsid);
 int handleRoot(struct webserver_t *client, float readpercentage, int mqttReconnects, settingsStruct *heishamonSettings);
+int handleJsonArgs(struct webserver_t *client, struct arguments_t *args, settingsStruct *heishamonSettings);
 int handleJsonOutput(struct webserver_t *client, char* actData, char* actDataExtra, char* actOptData, settingsStruct *heishamonSettings, bool extraDataBlockAvailable);
 int handleFactoryReset(struct webserver_t *client);
 int handleReboot(struct webserver_t *client);
@@ -101,6 +112,9 @@ void loadSettings(settingsStruct *heishamonSettings);
 int getSettings(struct webserver_t *client, settingsStruct *heishamonSettings);
 int getSettingsJson(struct webserver_t *client, settingsStruct *heishamonSettings);
 
+#ifdef ESP32
+int handleModbus(struct webserver_t *client);
+#endif
 int handleSettings(struct webserver_t *client);
 int saveSettings(struct webserver_t *client, settingsStruct *heishamonSettings);
 int settingsReconnectWifi(struct webserver_t *client, settingsStruct *heishamonSettings);

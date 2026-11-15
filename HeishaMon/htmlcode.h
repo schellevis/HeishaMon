@@ -31,6 +31,7 @@ static const char webCSS[] FLASHPROG = R"====(
   --green:#28a745;
   --green-glow:rgba(40,167,69,0.15);
   --orange:#fd7e14;
+  --switch-track:#c3c9d1;
   --radius:8px;
   --radius-sm:5px;
   --radius-lg:12px;
@@ -57,6 +58,7 @@ html.dark-mode {
   --green:#2ecc94;
   --green-glow:rgba(46,204,148,0.2);
   --orange:#f0a500;
+  --switch-track:#3a4257;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -93,6 +95,11 @@ body{
   text-decoration:none;
 }
 .topbar-logo span{color:var(--text-secondary);font-weight:400}
+.topbar-desc{
+  color:var(--text-secondary);font-size:14px;
+  padding-left:16px;border-left:1px solid var(--border);
+  max-width:40vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
 .hamburger{
   background:none;border:none;
   color:var(--text-secondary);
@@ -138,6 +145,7 @@ body{
 .sidemenu-nav a:hover{background:var(--bg-elevated);color:var(--text-primary)}
 .sidemenu-nav a.danger{color:var(--red)}
 .sidemenu-nav a.danger:hover{background:var(--red-glow)}
+.sidemenu-nav a[aria-current="page"]{color:var(--accent);background:var(--accent-glow)}
 .sidemenu-nav .nav-icon{width:16px;text-align:center;opacity:.7}
 .sidemenu-footer{
   padding:16px 20px;
@@ -276,6 +284,7 @@ tbody td:first-child{color:var(--text-primary);font-family:'JetBrains Mono',mono
   letter-spacing:0.3px;
 }
 .theme-switch-compact {
+  display:inline-block;
   position:relative;
   width:32px;
   height:18px;
@@ -292,7 +301,8 @@ tbody td:first-child{color:var(--text-primary);font-family:'JetBrains Mono',mono
   left:0;
   right:0;
   bottom:0;
-  background:var(--border);
+  background:var(--switch-track);
+  border:1px solid var(--border);
   transition:0.3s;
   border-radius:18px;
 }
@@ -309,6 +319,7 @@ tbody td:first-child{color:var(--text-primary);font-family:'JetBrains Mono',mono
 }
 input:checked + .theme-slider-compact {
   background:var(--accent);
+  border-color:var(--accent);
 }
 input:checked + .theme-slider-compact:before {
   transform:translateX(14px);
@@ -334,6 +345,16 @@ input:disabled + .theme-slider-compact {
   background:var(--bg-elevated);
 }
 .alias-edit:focus{border-color:var(--border-focus);box-shadow:0 0 0 2px var(--accent-glow)}
+.offset-edit{
+  width:64px;
+  padding:3px 6px;
+  font-size:12.5px;
+  color:var(--text-secondary);
+  background:transparent;
+  border:1px solid var(--border);
+  border-radius:var(--radius-sm);
+}
+.offset-edit:focus{outline:none;border-color:var(--border-focus);box-shadow:0 0 0 2px var(--accent-glow)}
 .tab-pane{display:none}
 .tab-pane.active{display:block}
 .settings-grid{
@@ -640,7 +661,9 @@ static const char webHeader[] FLASHPROG = R"====(
     }
     return null;
   }
-  if(getCookie('darkMode')==='true'){
+  var darkMode=getCookie('darkMode');
+  var wantDark = darkMode==='true' || (darkMode===null && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  if(wantDark){
     document.documentElement.classList.add('dark-mode-loading');
   }
 })();
@@ -728,7 +751,18 @@ static const char webBodyStart[] FLASHPROG = R"====(
     </label>
   </div>
   
-  <nav class='sidemenu-nav' id='sideNav'></nav>
+  <nav class='sidemenu-nav' id='sideNav'>
+    <a href="/"><span class="nav-icon" aria-hidden="true">&#8962;</span> Home</a>
+    <a href="/firmware"><span class="nav-icon" aria-hidden="true">&#8679;</span> Firmware</a>
+    <a href="/reboot" onclick="return confirm('Reboot the device?')"><span class="nav-icon" aria-hidden="true">&#8635;</span> Reboot</a>
+    <a href="/rules"><span class="nav-icon" aria-hidden="true">&#8881;</span> Rules</a>
+    <a href="/settings"><span class="nav-icon" aria-hidden="true">&#9881;</span> Settings</a>
+)===="
+#ifdef ESP32
+R"====(    <a href="/modbus"><span class="nav-icon" aria-hidden="true">&#9432;</span> Modbus registers</a>
+)===="
+#endif
+R"====(  </nav>
   <div class='sidemenu-footer'>
     <a href='https://github.com/heishamon/HeishaMon' target='_blank'>GitHub</a>
   </div>
@@ -737,6 +771,10 @@ static const char webBodyStart[] FLASHPROG = R"====(
   <div class='topbar-left'>
     <button class='hamburger' onclick='toggleMenu()'>&#9776;</button>
     <a class='topbar-logo' href='/'>Heisha<span>Mon</span></a>
+)====";
+
+// second half, the optional description is injected between the two parts
+static const char webBodyStart2[] FLASHPROG = R"====(
   </div>
   <div class='topbar-right'></div>
 </header>
@@ -749,6 +787,13 @@ static const char webFooter[] FLASHPROG = "</body></html>";
 // ─────────────────────────────────────────────────────────────────────────────
 static const char menuJS[] FLASHPROG = R"====(
 <script>
+document.addEventListener('DOMContentLoaded', function(){
+  document.querySelectorAll('#sideNav a').forEach(function(link){
+    if (link.getAttribute('href') === window.location.pathname) {
+      link.setAttribute('aria-current', 'page');
+    }
+  });
+});
 function toggleMenu(){
   var m=document.getElementById('sideMenu');
   var o=document.getElementById('menuOverlay');
@@ -798,12 +843,21 @@ function initDarkMode() {
   var darkMode = getCookie('darkMode');
   var toggle = document.getElementById('darkModeToggle');
   var html = document.documentElement;
-  
+
   // Remove the temporary loading class
   html.classList.remove('dark-mode-loading');
-  
-  // Apply proper dark mode
+
+  // No explicit preference saved yet: follow the OS/browser setting
+  var useDark;
   if (darkMode === 'true') {
+    useDark = true;
+  } else if (darkMode === 'false') {
+    useDark = false;
+  } else {
+    useDark = !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  }
+
+  if (useDark) {
     html.classList.add('dark-mode');
     if (toggle) toggle.checked = true;
   } else {
@@ -870,13 +924,25 @@ function startWebsockets(){
             updCell(j.data.heishavalues.topic+'-Value',j.data.heishavalues.value);
             updCell(j.data.heishavalues.topic+'-Description',j.data.heishavalues.description);
           } else if(j.data.dallasvalues){
-            updCell('SensorID-'+j.data.dallasvalues.sensorID+'-Temperature',j.data.dallasvalues.value);
+            var dID=j.data.dallasvalues.sensorID;
+            if(j.data.dallasvalues.value!==undefined)updCell('SensorID-'+dID+'-Temperature',j.data.dallasvalues.value);
+            if(j.data.dallasvalues.present!==undefined)updDallasPresence(dID,j.data.dallasvalues.present);
+            if(j.data.dallasvalues.offset!==undefined){
+              var oi=document.getElementById('SensorID-'+dID+'-OffsetInput');
+              if(oi&&document.activeElement!==oi)oi.value=Number(j.data.dallasvalues.offset).toFixed(1);
+            }
           } else if(j.data.s0values){
             updCell('s0port-'+j.data.s0values.s0port+'-Watt',j.data.s0values.Watt);
             updCell('s0port-'+j.data.s0values.s0port+'-Watthour',j.data.s0values.Watthour);
             updCell('s0port-'+j.data.s0values.s0port+'-WatthourTotal',j.data.s0values.WatthourTotal);
           } else if(j.data.opentherm){
             updCell(j.data.opentherm.name+'-value',j.data.opentherm.value);
+          } else if(j.data.gpio){
+            var gpioCell=document.getElementById('gpio-'+j.data.gpio.pin+'-state');
+            var gpioInput=gpioCell&&gpioCell.querySelector('input[type=checkbox]');
+            if(gpioInput)gpioInput.checked=!!j.data.gpio.state;
+          } else if(j.data.dallasRescan){
+            refreshDallasTable();
           }
         }
       } else {
@@ -950,6 +1016,40 @@ function updCell(id,val){
     el.classList.add('update-effect');
   }
 }
+
+function updDallasPresence(sID,present){
+  var statusCell=document.getElementById('SensorID-'+sID+'-Status');
+  if(!statusCell)return;
+  var row=statusCell.parentElement;
+  if(row)row.style.opacity=present?'':'0.6';
+  statusCell.style.color=present?'':'var(--danger,#f44336)';
+  if(present){
+    delete statusCell.dataset.offlineSince;
+    statusCell.classList.remove('offline-duration');
+    statusCell.textContent='OK';
+  } else {
+    statusCell.dataset.offlineSince=Date.now();
+    statusCell.classList.add('offline-duration');
+    statusCell.textContent=formatOfflineDuration(false,0);
+  }
+}
+
+function formatOfflineDuration(present,lastSeenSeconds){
+  if(present)return'OK';
+  if(lastSeenSeconds==null||lastSeenSeconds<0)return'Offline (never seen)';
+  var s=lastSeenSeconds;
+  if(s<60)return'Offline for '+s+'s';
+  if(s<3600)return'Offline for '+Math.floor(s/60)+'m';
+  if(s<86400)return'Offline for '+Math.floor(s/3600)+'h';
+  return'Offline for '+Math.floor(s/86400)+'d';
+}
+
+setInterval(function(){
+  document.querySelectorAll('.offline-duration[data-offline-since]').forEach(function(cell){
+    var seconds=Math.floor((Date.now()-cell.dataset.offlineSince)/1000);
+    cell.textContent=formatOfflineDuration(false,seconds);
+  });
+},15000);
 </script>
 )====";
 
@@ -987,6 +1087,128 @@ var dallasAliasEdit=function(){
   xhr.open('GET','/dallasalias?'+addr+'='+alias,true);
   xhr.send();
 };
+var dallasOffsetEdit=function(){
+  isEditing=false;
+  var addr=this.getAttribute('data-address');
+  var v=parseFloat(String(this.value).replace(',','.'));
+  if(isNaN(v))return;
+  v=Math.max(-10,Math.min(10,Math.round(v*10)/10));
+  this.value=v.toFixed(1);
+  var xhr=new XMLHttpRequest();
+  xhr.open('GET','/dallasoffset?'+addr+'='+encodeURIComponent(v.toFixed(1)),true);
+  xhr.send();
+};
+function rescanDallas(){
+  var xhr=new XMLHttpRequest();
+  xhr.open('GET','/scandallas',true);
+  xhr.onload=function(){refreshTable();};
+  xhr.send();
+}
+function removeDallas(addr){
+  if(!confirm('Remove sensor '+addr+'? This also clears its retained mqtt value.'))return;
+  var xhr=new XMLHttpRequest();
+  xhr.open('GET','/removedallas?'+addr+'=1',true);
+  xhr.onload=function(){refreshTable();};
+  xhr.send();
+}
+function renderDallasTable(d){
+  if(!(d&&d['1wire']&&Array.isArray(d['1wire'])))return;
+  var tb=document.getElementById('dallasvalues');tb.innerHTML='';
+  d['1wire'].forEach(function(item){
+    var row=document.createElement('tr');
+    var sID=item['Sensor'];
+    if(!item.Present)row.style.opacity='0.6';
+    ['Sensor','Temperature','Offset','Alias'].forEach(function(k){
+      var cell=document.createElement('td');
+      cell.id='SensorID-'+sID+'-'+k;
+      if(k==='Alias'){
+        var div=document.createElement('div');
+        div.textContent=item[k];
+        div.classList.add('alias-edit');
+        div.contentEditable='true';
+        div.setAttribute('data-address',item.Sensor);
+        div.addEventListener('focus',function(){isEditing=true;});
+        div.addEventListener('blur',dallasAliasEdit);
+        cell.appendChild(div);
+      } else if(k==='Offset'){
+        var inp=document.createElement('input');
+        inp.type='number';inp.step='0.1';inp.min='-10';inp.max='10';
+        inp.value=(item.Offset!==undefined?Number(item.Offset):0).toFixed(1);
+        inp.className='offset-edit';
+        inp.id='SensorID-'+sID+'-OffsetInput';
+        inp.title='Calibration offset in °C, added to the raw sensor reading';
+        inp.setAttribute('data-address',item.Sensor);
+        inp.addEventListener('focus',function(){isEditing=true;});
+        inp.addEventListener('blur',function(){isEditing=false;});
+        inp.addEventListener('change',dallasOffsetEdit);
+        cell.appendChild(inp);
+      } else {cell.textContent=item[k];}
+      row.appendChild(cell);
+    });
+    var statusCell=document.createElement('td');
+    statusCell.id='SensorID-'+sID+'-Status';
+    if(!item.Present){
+      statusCell.style.color='var(--danger,#f44336)';
+      statusCell.classList.add('offline-duration');
+      if(item.LastSeenSeconds>=0)statusCell.dataset.offlineSince=Date.now()-item.LastSeenSeconds*1000;
+    }
+    statusCell.textContent=formatOfflineDuration(item.Present,item.LastSeenSeconds);
+    row.appendChild(statusCell);
+    var actionCell=document.createElement('td');
+    var removeBtn=document.createElement('button');
+    removeBtn.textContent='Remove';
+    removeBtn.className='btn btn-ghost';
+    removeBtn.style.cssText='padding:2px 8px;font-size:11px;height:22px;';
+    removeBtn.onclick=function(){removeDallas(sID);};
+    actionCell.appendChild(removeBtn);
+    row.appendChild(actionCell);
+    tb.appendChild(row);
+  });
+}
+async function refreshDallasTable(){
+  try{
+    if(isEditing)return;
+    var res=await fetch('/json');
+    var d=await res.json();
+    renderDallasTable(d);
+  }catch(e){}
+}
+var gpioModeNames={0:'Input (pull-up)',1:'Input',2:'Output'};
+function renderGpioTable(d){
+  if(!(d&&d.gpio&&Array.isArray(d.gpio)))return;
+  var tb=document.getElementById('gpiovalues');
+  if(!tb)return; // GPIO tab/pane isn't rendered at all in listen-only mode
+  tb.innerHTML='';
+  // the fixed relays on boards that have them (ESP32) are named relay/one and relay/two; the rest are
+  // user-configurable GPIOs. OpenTherm may reserve pins and reduce the visible count.
+  var extraIdx=0;
+  d.gpio.forEach(function(item,i){
+    var row=document.createElement('tr');
+    var nameCell=document.createElement('td');
+    var relayName=item.name==='relay/one'?'Relay 1':(item.name==='relay/two'?'Relay 2':null);
+    nameCell.textContent=relayName||('GPIO '+(++extraIdx));
+    row.appendChild(nameCell);
+    var pinCell=document.createElement('td');pinCell.textContent=item.pin;row.appendChild(pinCell);
+    var modeCell=document.createElement('td');modeCell.textContent=gpioModeNames[item.mode]||item.mode;row.appendChild(modeCell);
+    var stateCell=document.createElement('td');
+    stateCell.id='gpio-'+item.pin+'-state';
+    var label=document.createElement('label');label.className='theme-switch-compact';
+    var input=document.createElement('input');input.type='checkbox';input.checked=!!item.state;
+    if(item.mode===2){
+      input.onchange=function(){toggleGpio(item.pin,this.checked);};
+    } else {
+      input.disabled=true;
+    }
+    var slider=document.createElement('span');slider.className='theme-slider-compact';
+    label.appendChild(input);label.appendChild(slider);
+    stateCell.appendChild(label);
+    row.appendChild(stateCell);
+    tb.appendChild(row);
+  });
+}
+function toggleGpio(pin,on){
+  fetch('/gpio?pin='+pin+'&value='+(on?1:0)).catch(function(){});
+}
 async function refreshTable(){
   try{
     if(isEditing)return;
@@ -1004,29 +1226,8 @@ async function refreshTable(){
       var tb=document.getElementById('heishavalues');
       d['heatpump optional'].forEach(function(item){tb.appendChild(buildRow(item,'Topic'));});
     }
-    if(d&&d['1wire']&&Array.isArray(d['1wire'])){
-      var tb=document.getElementById('dallasvalues');tb.innerHTML='';
-      d['1wire'].forEach(function(item){
-        var row=document.createElement('tr');
-        var sID=item['Sensor'];
-        for(var k in item){if(Object.hasOwn(item,k)){
-          var cell=document.createElement('td');
-          cell.id='SensorID-'+sID+'-'+k;
-          if(k==='Alias'){
-            var div=document.createElement('div');
-            div.textContent=item[k];
-            div.classList.add('alias-edit');
-            div.contentEditable='true';
-            div.setAttribute('data-address',item.Sensor);
-            div.addEventListener('focus',function(){isEditing=true;});
-            div.addEventListener('blur',dallasAliasEdit);
-            cell.appendChild(div);
-          } else {cell.textContent=item[k];}
-          row.appendChild(cell);
-        }}
-        tb.appendChild(row);
-      });
-    }
+    renderDallasTable(d);
+    renderGpioTable(d);
     if(d&&d.s0&&Array.isArray(d.s0)){
       var tb=document.getElementById('s0values');tb.innerHTML='';
       d.s0.forEach(function(item){
@@ -1070,101 +1271,47 @@ function buildRow(item,idKey){
 
 static const char consoleTogglesJS[] FLASHPROG = R"====(
 <script>
-// Session cookie helpers
-function setSessionCookie(name, value) {
-  document.cookie = name + "=" + value + "; path=/; SameSite=Strict";
-}
-
-function getSessionCookie(name) {
-  var nameEQ = name + "=";
-  var ca = document.cookie.split(';');
-  for(var i = 0; i < ca.length; i++) {
-    var c = ca[i];
-    while (c.charAt(0) == ' ') c = c.substring(1, c.length);
-    if (c.indexOf(nameEQ) == 0) return c.substring(nameEQ.length, c.length);
-  }
-  return null;
-}
-
-// Initialize console toggles from session cookies or fetch from server
-function initConsoleToggles() {
-  var mqttLogState = getSessionCookie('mqttLog');
-  var hexdumpState = getSessionCookie('hexdump');
-  
-  if (mqttLogState !== null && hexdumpState !== null) {
-    // Use cached session state
-    document.getElementById('mqttLogToggle').checked = (mqttLogState === 'true');
-    document.getElementById('hexdumpToggle').checked = (hexdumpState === 'true');
-  } else {
-    // First visit in session - fetch from server
-    fetch('/getsettings')
-      .then(function(response) { return response.json(); })
-      .then(function(data) {
-        var mqttEnabled = (data.logMqtt === 'enabled' || data.logMqtt === 1);
-        var hexdumpEnabled = (data.logHexdump === 'enabled' || data.logHexdump === 1);
-        
-        document.getElementById('mqttLogToggle').checked = mqttEnabled;
-        document.getElementById('hexdumpToggle').checked = hexdumpEnabled;
-        
-        // Store in session cookies
-        setSessionCookie('mqttLog', mqttEnabled);
-        setSessionCookie('hexdump', hexdumpEnabled);
-      })
-      .catch(function(err) {
-        console.error('Failed to fetch settings:', err);
-      });
-  }
-}
-
-// Toggle MQTT log
-function toggleMqttLog() {
-  var toggle = document.getElementById('mqttLogToggle');
-  var enabled = toggle.checked;
-  
-  // Update session cookie
-  setSessionCookie('mqttLog', enabled);
-  
-  // Call server endpoint
-  fetch('/togglelog')
-    .then(function(response) {
-      if (!response.ok) {
-        console.error('Failed to toggle MQTT log');
-        // Revert toggle on error
-        toggle.checked = !enabled;
-        setSessionCookie('mqttLog', !enabled);
-      }
+// Refresh both console toggles from the live device state.
+// The device's runtime flags are the source of truth: they reset on reboot to
+// the "from start" settings and are flipped by /togglelog and /togglehexdump.
+// Reading /getsettings after every change keeps the switches in sync with the
+// device instead of with a (possibly stale) browser-side cache.
+function refreshConsoleToggles() {
+  return fetch('/getsettings')
+    .then(function(response) { return response.json(); })
+    .then(function(data) {
+      var mqttEnabled = (data.logMqtt === 'enabled' || data.logMqtt === 1);
+      var hexdumpEnabled = (data.logHexdump === 'enabled' || data.logHexdump === 1);
+      document.getElementById('mqttLogToggle').checked = mqttEnabled;
+      document.getElementById('hexdumpToggle').checked = hexdumpEnabled;
     })
     .catch(function(err) {
-      console.error('Error toggling MQTT log:', err);
-      // Revert toggle on error
-      toggle.checked = !enabled;
-      setSessionCookie('mqttLog', !enabled);
+      console.error('Failed to fetch settings:', err);
     });
 }
 
-// Toggle Hexdump log
+function initConsoleToggles() {
+  refreshConsoleToggles();
+}
+
+// Toggle MQTT log, then re-read the device state so the switch reflects the
+// actual resulting position (the endpoint flips the flag server-side).
+function toggleMqttLog() {
+  fetch('/togglelog')
+    .then(function() { refreshConsoleToggles(); })
+    .catch(function(err) {
+      console.error('Error toggling MQTT log:', err);
+      refreshConsoleToggles();
+    });
+}
+
+// Toggle Hexdump log, then re-read the device state (see toggleMqttLog).
 function toggleHexdump() {
-  var toggle = document.getElementById('hexdumpToggle');
-  var enabled = toggle.checked;
-  
-  // Update session cookie
-  setSessionCookie('hexdump', enabled);
-  
-  // Call server endpoint
   fetch('/togglehexdump')
-    .then(function(response) {
-      if (!response.ok) {
-        console.error('Failed to toggle hexdump');
-        // Revert toggle on error
-        toggle.checked = !enabled;
-        setSessionCookie('hexdump', !enabled);
-      }
-    })
+    .then(function() { refreshConsoleToggles(); })
     .catch(function(err) {
       console.error('Error toggling hexdump:', err);
-      // Revert toggle on error
-      toggle.checked = !enabled;
-      setSessionCookie('hexdump', !enabled);
+      refreshConsoleToggles();
     });
 }
 
@@ -1203,19 +1350,8 @@ document.addEventListener('DOMContentLoaded', function() {
 // Side nav links for root page (injected via JS on load below)
 // We build the nav + status bar in one block, then the tab panes.
 
-// Side nav links and status bar for root page
+// Status bar for root page
 static const char webBodyRoot1[] FLASHPROG = R"====(
-<script>
-document.addEventListener('DOMContentLoaded',function(){
-  var nav=document.getElementById('sideNav');
-  nav.innerHTML=`
-<a href="/firmware"><span class="nav-icon">&#8679;</span> Firmware</a>
-<a href="/reboot" onclick="return confirm('Reboot the device?')"><span class="nav-icon">&#8635;</span> Reboot</a>
-<a href="/rules"><span class="nav-icon">&#8881;</span> Rules</a>
-<a href="/settings"><span class="nav-icon">&#9881;</span> Settings</a>
-`;
-});
-</script>
 <div class='main-content'>
 <div class='statusbar' id='statusBar'>
   <div class='status-chip'><span class='status-dot'></span><span class='chip-label'>WiFi</span><span class='chip-value' id='wifi'>—</span><span style='color:var(--text-muted);font-size:11px'>%</span></div>
@@ -1259,6 +1395,9 @@ static const char webBodyRootS0Tab[] FLASHPROG = R"====(
 static const char webBodyRootOpenthermTab[] FLASHPROG = R"====(
 <button class='tabnav-btn' data-tab='Opentherm' onclick="openTable('Opentherm')">Opentherm</button>
 )====";
+static const char webBodyRootGpioTab[] FLASHPROG = R"====(
+<button class='tabnav-btn' data-tab='Gpio' onclick="openTable('Gpio')">GPIO</button>
+)====";
 static const char webTabnavClose[] FLASHPROG = R"====(
   <button class='tabnav-btn' data-tab='Console' onclick="openTable('Console')">Console</button>
 </nav>
@@ -1282,11 +1421,11 @@ static const char webBodyRootHeatpumpValues[] FLASHPROG = R"====(
 static const char webBodyRootDallasValues[] FLASHPROG = R"====(
 <div id='Dallas' class='tab-pane'>
 <div class='panel'>
-  <div class='panel-header'><h3>Dallas 1-Wire Sensors</h3><span class='panel-meta'>Live</span></div>
+  <div class='panel-header'><h3>Dallas 1-Wire Sensors</h3><button onclick='rescanDallas()' class='btn btn-ghost' style='padding:4px 10px;font-size:11px;height:24px;'>&#8635; Rescan bus</button></div>
   <table><thead><tr>
-    <th>Sensor</th><th>Temperature</th><th>Alias</th>
+    <th>Sensor</th><th>Temperature</th><th>Offset (&deg;C)</th><th>Alias</th><th>Status</th><th></th>
   </tr></thead><tbody id='dallasvalues'>
-    <tr><td colspan='3' style='color:var(--text-muted);padding:24px;text-align:center'>Loading…</td></tr>
+    <tr><td colspan='6' style='color:var(--text-muted);padding:24px;text-align:center'>Loading…</td></tr>
   </tbody></table>
 </div></div>
 )====";
@@ -1311,6 +1450,18 @@ static const char webBodyRootOpenthermValues[] FLASHPROG = R"====(
     <th>Name</th><th>Type</th><th>Value</th>
   </tr></thead><tbody id='openthermvalues'>
     <tr><td colspan='3' style='color:var(--text-muted);padding:24px;text-align:center'>Loading…</td></tr>
+  </tbody></table>
+</div></div>
+)====";
+
+static const char webBodyRootGpioValues[] FLASHPROG = R"====(
+<div id='Gpio' class='tab-pane'>
+<div class='panel'>
+  <div class='panel-header'><h3>GPIO</h3><span class='panel-meta'>Live</span></div>
+  <table><thead><tr>
+    <th>Name</th><th>Pin</th><th>Mode</th><th>State</th>
+  </tr></thead><tbody id='gpiovalues'>
+    <tr><td colspan='4' style='color:var(--text-muted);padding:24px;text-align:center'>Loading…</td></tr>
   </tbody></table>
 </div></div>
 )====";
@@ -1362,6 +1513,28 @@ function ShowHideDallasTable(cb){
 function ShowHideS0Table(cb){
   document.getElementById('s0settings').style.display=cb.checked?'block':'none';
 }
+function updateGPIORowVisibility(){
+  // On ESP8266, two hardware facts make some Extra GPIO settings unusable:
+  // - Opentherm hardwires pins 1 and 3 (GPIO 1/GPIO 2) for its own TX/RX while it's enabled.
+  // - Listen-only mode skips enabling the shared level shifter/mosfets on boot, so ALL extra
+  //   GPIO pins are left unpowered/floating while it's enabled.
+  var otEl=document.getElementsByName('opentherm')[0];
+  var loEl=document.getElementsByName('listenonly')[0];
+  var otOn=!!(otEl&&otEl.checked);
+  var loOn=!!(loEl&&loEl.checked);
+  document.querySelectorAll('.gpio-row').forEach(function(row){
+    var hide=loOn||(otOn&&row.classList.contains('ot-conflict-gpio'));
+    row.style.display=hide?'none':'';
+    var sel=row.querySelector('select');
+    if(sel)sel.disabled=hide;
+  });
+  document.querySelectorAll('.ot-conflict-note').forEach(function(row){
+    row.style.display=(otOn&&!loOn)?'':'none';
+  });
+  document.querySelectorAll('.lo-conflict-note').forEach(function(row){
+    row.style.display=loOn?'':'none';
+  });
+}
 function changeMinWatt(port){
   var ppkwh=document.getElementById('s0_ppkwh_'+port).value;
   var interval=document.getElementById('s0_interval_'+port).value;
@@ -1402,20 +1575,6 @@ static const char caUploadJS[] PROGMEM = R"====(
 )====";
 #endif
 
-static const char webBodySettings1[] FLASHPROG = R"====(
-<script>
-document.addEventListener('DOMContentLoaded',function(){
-  var nav=document.getElementById('sideNav');
-  nav.innerHTML=`
-<a href="/"><span class="nav-icon">&#8634;</span> Home</a>
-<a href="/firmware"><span class="nav-icon">&#8679;</span> Firmware</a>
-<a href="/reboot" onclick="return confirm('Reboot the device?')"><span class="nav-icon">&#8635;</span> Reboot</a>
-<a href="/rules"><span class="nav-icon">&#8881;</span> Rules</a>
-`;
-});
-</script>
-)====";
-
 static const char settingsForm1[] FLASHPROG = R"====(
 <div class='main-content' style='max-width:780px;margin:0 auto'>
 <div id='loading_settings' class='loading-overlay'>
@@ -1429,6 +1588,10 @@ static const char settingsForm1[] FLASHPROG = R"====(
     <div class='setting-row'>
       <label class='setting-label'>Hostname</label>
       <input type='text' name='wifi_hostname' maxlength='39' class='setting-input' value=''>
+    </div>
+    <div class='setting-row'>
+      <label class='setting-label'>Description</label>
+      <input type='text' name='description' maxlength='63' class='setting-input' value=''>
     </div>
     <div class='setting-row'>
       <label class='setting-label'>WiFi SSID</label>
@@ -1559,6 +1722,19 @@ static const char settingsForm2[] FLASHPROG = R"====(
     </div>
   </div></div>
   <div class='panel' style='margin-bottom:16px'>
+  <div class='panel-header'><h3>Topic groups</h3></div>
+  <div class='settings-grid'>
+    <div class='setting-row'><span class='setting-hint'>Switched off groups are not published to MQTT or shown on the main page. Rules and Modbus still see all values. The basic topics are always published.</span></div>
+    <div class='setting-row'><label class='setting-label'>Heating &amp; cooling</label><div style='display:flex;align-items:center;gap:10px'><div class='checkbox-wrap'><input type='checkbox' name='topics_heatcool' value='enabled'></div><span class='setting-hint' style='display:block;margin-top:4px'>zone 1, curves, setpoints</span></div></div>
+    <div class='setting-row'><label class='setting-label'>Zone 2</label><div style='display:flex;align-items:center;gap:10px'><div class='checkbox-wrap'><input type='checkbox' name='topics_zone2' value='enabled'></div></div></div>
+    <div class='setting-row'><label class='setting-label'>DHW &amp; heaters</label><div style='display:flex;align-items:center;gap:10px'><div class='checkbox-wrap'><input type='checkbox' name='topics_dhw_heaters' value='enabled'></div><span class='setting-hint' style='display:block;margin-top:4px'>heater states, sterilization, delays</span></div></div>
+    <div class='setting-row'><label class='setting-label'>Diagnostics</label><div style='display:flex;align-items:center;gap:10px'><div class='checkbox-wrap'><input type='checkbox' name='topics_diagnostics' value='enabled'></div><span class='setting-hint' style='display:block;margin-top:4px'>refrigerant circuit, fans, pressures</span></div></div>
+    <div class='setting-row'><label class='setting-label'>Buffer, solar &amp; pool</label><div style='display:flex;align-items:center;gap:10px'><div class='checkbox-wrap'><input type='checkbox' name='topics_buffer_solar_pool' value='enabled'></div><span class='setting-hint' style='display:block;margin-top:4px'>also dry concrete</span></div></div>
+    <div class='setting-row'><label class='setting-label'>Bivalent</label><div style='display:flex;align-items:center;gap:10px'><div class='checkbox-wrap'><input type='checkbox' name='topics_bivalent' value='enabled'></div></div></div>
+    <div class='setting-row'><label class='setting-label'>External control &amp; SG ready</label><div style='display:flex;align-items:center;gap:10px'><div class='checkbox-wrap'><input type='checkbox' name='topics_external_sgready' value='enabled'></div><span class='setting-hint' style='display:block;margin-top:4px'>also demand control, optional PCB</span></div></div>
+    <div class='setting-row'><label class='setting-label'>Installer settings</label><div style='display:flex;align-items:center;gap:10px'><div class='checkbox-wrap'><input type='checkbox' name='topics_installer' value='enabled'></div><span class='setting-hint' style='display:block;margin-top:4px'>static installer menu settings</span></div></div>
+  </div></div>
+  <div class='panel' style='margin-bottom:16px'>
   <div class='panel-header'><h3>Behavior</h3></div>
   <div class='settings-grid'>
     <div class='setting-row'><label class='setting-label'>WiFi hotspot when disconnected</label><div class='checkbox-wrap'><input type='checkbox' name='hotspot' value='enabled'></div></div>
@@ -1566,13 +1742,14 @@ static const char settingsForm2[] FLASHPROG = R"====(
     <div class='setting-row'><label class='setting-label'>Debug hexdump from start</label><div class='checkbox-wrap'><input type='checkbox' name='logHexdump' value='enabled'></div></div>
     <div class='setting-row'><label class='setting-label'>Debug log to serial1 (GPIO2)</label><div class='checkbox-wrap'><input type='checkbox' name='logSerial1' value='enabled'></div></div>
     <div class='setting-row'><label class='setting-label'>Emulate optional PCB</label><div class='checkbox-wrap'><input type='checkbox' name='optionalPCB' value='enabled'></div></div>
-    <div class='setting-row'><label class='setting-label'>Enable Opentherm processing</label><div class='checkbox-wrap'><input type='checkbox' name='opentherm' value='enabled'></div></div>
+    <div class='setting-row'><label class='setting-label'>Enable Opentherm processing</label><div class='checkbox-wrap'><input type='checkbox' onclick='updateGPIORowVisibility()' name='opentherm' value='enabled'></div></div>
     <div class='setting-row'><label class='setting-label'>Force load rules on boot</label><div style='display:flex;align-items:center;gap:10px'><div class='checkbox-wrap'><input type='checkbox' name='force_rules' value='enabled'></div><span class='setting-hint' style='display:block;margin-top:4px'>Rules load normally, but skip after crashes to prevent boot loops. Enable to override.</span></div></div>
+    <div class='setting-row'><label class='setting-label'>Publish rule executions to MQTT</label><div style='display:flex;align-items:center;gap:10px'><div class='checkbox-wrap'><input type='checkbox' name='rules_mqtt_events' value='enabled'></div><span class='setting-hint' style='display:block;margin-top:4px'>Debug aid: one rules/executed event per rule run.</span></div></div>
   </div></div>
   <div class='panel' style='margin-bottom:16px'>
   <div class='panel-header'><h3>Listen Only</h3></div>
   <div class='settings-grid'>
-    <div class='setting-row'><label class='setting-label'>Listen only (parallel CZ-TAW1)</label><div class='checkbox-wrap'><input type='checkbox' name='listenonly' value='enabled'></div></div>
+    <div class='setting-row'><label class='setting-label'>Listen only (parallel CZ-TAW1)</label><div class='checkbox-wrap'><input type='checkbox' onclick='updateGPIORowVisibility()' name='listenonly' value='enabled'></div></div>
   </div></div>
   <div class='panel' style='margin-bottom:16px'>
   <div class='panel-header'><h3>1-Wire DS18B20</h3></div>
@@ -1625,6 +1802,15 @@ static const char settingsForm2[] FLASHPROG = R"====(
     <div class='setting-row'><label class='setting-label'>Port 2 standby threshold</label><span style='font-size:12px;color:var(--text-muted)'><span id='s0_minwatt_2'>—</span> W</span></div>
   </div></div>
   </div>
+  <div class='panel' style='margin-bottom:16px'>
+  <div class='panel-header'><h3>Extra GPIO</h3></div>
+  <div class='settings-grid'>
+    <div class='setting-row gpio-row ot-conflict-gpio'><label class='setting-label'>GPIO 1 (pin 1)</label><select name='gpio_1_mode' class='setting-input'><option value='0'>Input (pull-up)</option><option value='1'>Input</option><option value='2'>Output</option></select></div>
+    <div class='setting-row gpio-row ot-conflict-gpio'><label class='setting-label'>GPIO 2 (pin 3)</label><select name='gpio_2_mode' class='setting-input'><option value='0'>Input (pull-up)</option><option value='1'>Input</option><option value='2'>Output</option></select></div>
+    <div class='setting-row gpio-row'><label class='setting-label'>GPIO 3 (pin 16)</label><select name='gpio_3_mode' class='setting-input'><option value='0'>Input (pull-up)</option><option value='1'>Input</option><option value='2'>Output</option></select></div>
+    <div class='setting-row ot-conflict-note' style='display:none'><span class='setting-hint' style='padding:8px 0'>GPIO 1 and GPIO 2 are reserved for Opentherm's TX/RX while it's enabled.</span></div>
+    <div class='setting-row lo-conflict-note' style='display:none'><span class='setting-hint' style='padding:8px 0'>Extra GPIOs can't be used while Listen Only is active.</span></div>
+  </div></div>
   <div class='form-actions'>
     <button type='submit' class='btn btn-primary'>Save Settings</button>
   </div>
@@ -1660,6 +1846,19 @@ static const char settingsForm2[] FLASHPROG = R"====(
     </div>
   </div></div>
   <div class='panel' style='margin-bottom:16px'>
+  <div class='panel-header'><h3>Topic groups</h3></div>
+  <div class='settings-grid'>
+    <div class='setting-row'><span class='setting-hint'>Switched off groups are not published to MQTT or shown on the main page. Rules and Modbus still see all values. The basic topics are always published.</span></div>
+    <div class='setting-row'><label class='setting-label'>Heating &amp; cooling</label><div style='display:flex;align-items:center;gap:10px'><div class='checkbox-wrap'><input type='checkbox' name='topics_heatcool' value='enabled'></div><span class='setting-hint' style='display:block;margin-top:4px'>zone 1, curves, setpoints</span></div></div>
+    <div class='setting-row'><label class='setting-label'>Zone 2</label><div style='display:flex;align-items:center;gap:10px'><div class='checkbox-wrap'><input type='checkbox' name='topics_zone2' value='enabled'></div></div></div>
+    <div class='setting-row'><label class='setting-label'>DHW &amp; heaters</label><div style='display:flex;align-items:center;gap:10px'><div class='checkbox-wrap'><input type='checkbox' name='topics_dhw_heaters' value='enabled'></div><span class='setting-hint' style='display:block;margin-top:4px'>heater states, sterilization, delays</span></div></div>
+    <div class='setting-row'><label class='setting-label'>Diagnostics</label><div style='display:flex;align-items:center;gap:10px'><div class='checkbox-wrap'><input type='checkbox' name='topics_diagnostics' value='enabled'></div><span class='setting-hint' style='display:block;margin-top:4px'>refrigerant circuit, fans, pressures</span></div></div>
+    <div class='setting-row'><label class='setting-label'>Buffer, solar &amp; pool</label><div style='display:flex;align-items:center;gap:10px'><div class='checkbox-wrap'><input type='checkbox' name='topics_buffer_solar_pool' value='enabled'></div><span class='setting-hint' style='display:block;margin-top:4px'>also dry concrete</span></div></div>
+    <div class='setting-row'><label class='setting-label'>Bivalent</label><div style='display:flex;align-items:center;gap:10px'><div class='checkbox-wrap'><input type='checkbox' name='topics_bivalent' value='enabled'></div></div></div>
+    <div class='setting-row'><label class='setting-label'>External control &amp; SG ready</label><div style='display:flex;align-items:center;gap:10px'><div class='checkbox-wrap'><input type='checkbox' name='topics_external_sgready' value='enabled'></div><span class='setting-hint' style='display:block;margin-top:4px'>also demand control, optional PCB</span></div></div>
+    <div class='setting-row'><label class='setting-label'>Installer settings</label><div style='display:flex;align-items:center;gap:10px'><div class='checkbox-wrap'><input type='checkbox' name='topics_installer' value='enabled'></div><span class='setting-hint' style='display:block;margin-top:4px'>static installer menu settings</span></div></div>
+  </div></div>
+  <div class='panel' style='margin-bottom:16px'>
   <div class='panel-header'><h3>Behavior</h3></div>
   <div class='settings-grid'>
     <div class='setting-row'><label class='setting-label'>WiFi hotspot when disconnected</label><div class='checkbox-wrap'><input type='checkbox' name='hotspot' value='enabled'></div></div>
@@ -1669,7 +1868,15 @@ static const char settingsForm2[] FLASHPROG = R"====(
     <div class='setting-row'><label class='setting-label'>Emulate optional PCB</label><div class='checkbox-wrap'><input type='checkbox' name='optionalPCB' value='enabled'></div></div>
     <div class='setting-row'><label class='setting-label'>Enable Opentherm processing</label><div class='checkbox-wrap'><input type='checkbox' name='opentherm' value='enabled'></div></div>
     <div class='setting-row'><label class='setting-label'>Enable CZ-TAW1 proxy port</label><div class='checkbox-wrap'><input type='checkbox' name='proxy' value='enabled'></div></div>
+    <div class='setting-row'><label class='setting-label'>Ethernet module (W5500)</label><div style='display:flex;align-items:center;gap:10px'><div class='checkbox-wrap'><input type='checkbox' name='ethernet' value='enabled'></div><span class='setting-hint' style='display:block;margin-top:4px'>Disable on boards without the ethernet module to skip the W5500 probe and leave GPIO10-15 untouched. Needs a reboot.</span></div></div>
     <div class='setting-row'><label class='setting-label'>Force rules on boot</label><div class='checkbox-wrap'><input type='checkbox' name='force_rules' value='enabled'></div></div>
+    <div class='setting-row'><label class='setting-label'>Publish rule executions to MQTT</label><div style='display:flex;align-items:center;gap:10px'><div class='checkbox-wrap'><input type='checkbox' name='rules_mqtt_events' value='enabled'></div><span class='setting-hint' style='display:block;margin-top:4px'>Debug aid: one rules/executed event per rule run.</span></div></div>
+  </div></div>
+  <div class='panel' style='margin-bottom:16px'>
+  <div class='panel-header'><h3>Modbus TCP</h3></div>
+  <div class='settings-grid'>
+    <div class='setting-row'><label class='setting-label'>Enable Modbus TCP server (port 502)</label><div style='display:flex;align-items:center;gap:10px'><div class='checkbox-wrap'><input type='checkbox' name='modbus' value='enabled'></div><span class='setting-hint' style='display:block;margin-top:4px'>No authentication, so only enable on a trusted network.</span></div></div>
+    <div class='setting-row'><label class='setting-label'>Allow Modbus writes</label><div style='display:flex;align-items:center;gap:10px'><div class='checkbox-wrap'><input type='checkbox' name='modbusWrites' value='enabled'></div><span class='setting-hint' style='display:block;margin-top:4px'>Lets Modbus clients send heat pump commands (including SetReset) and switch the relays.</span></div></div>
   </div></div>
   <div class='panel' style='margin-bottom:16px'>
   <div class='panel-header'><h3>Listen Only</h3></div>
@@ -1727,6 +1934,17 @@ static const char settingsForm2[] FLASHPROG = R"====(
     <div class='setting-row'><label class='setting-label'>Port 2 standby threshold</label><span style='font-size:12px;color:var(--text-muted)'><span id='s0_minwatt_2'>—</span> W</span></div>
   </div></div>
   </div>
+  <div class='panel' style='margin-bottom:16px'>
+  <div class='panel-header'><h3>Extra GPIO</h3></div>
+  <div class='settings-grid'>
+    <div class='setting-row'><label class='setting-label'>Relay 1 (pin 21)</label><select class='setting-input' disabled><option value='2' selected>Output</option></select></div>
+    <div class='setting-row'><label class='setting-label'>Relay 2 (pin 47)</label><select class='setting-input' disabled><option value='2' selected>Output</option></select></div>
+    <div class='setting-row'><label class='setting-label'>GPIO 1 (pin 33)</label><select name='gpio_1_mode' class='setting-input'><option value='0'>Input (pull-up)</option><option value='1'>Input</option><option value='2'>Output</option></select></div>
+    <div class='setting-row'><label class='setting-label'>GPIO 2 (pin 34)</label><select name='gpio_2_mode' class='setting-input'><option value='0'>Input (pull-up)</option><option value='1'>Input</option><option value='2'>Output</option></select></div>
+    <div class='setting-row'><label class='setting-label'>GPIO 3 (pin 35)</label><select name='gpio_3_mode' class='setting-input'><option value='0'>Input (pull-up)</option><option value='1'>Input</option><option value='2'>Output</option></select></div>
+    <div class='setting-row'><label class='setting-label'>GPIO 4 (pin 36)</label><select name='gpio_4_mode' class='setting-input'><option value='0'>Input (pull-up)</option><option value='1'>Input</option><option value='2'>Output</option></select></div>
+    <div class='setting-row'><label class='setting-label'>GPIO 5 (pin 37)</label><select name='gpio_5_mode' class='setting-input'><option value='0'>Input (pull-up)</option><option value='1'>Input</option><option value='2'>Output</option></select></div>
+  </div></div>
   <div class='form-actions'>
     <button type='submit' class='btn btn-primary'>Save Settings</button>
   </div>
@@ -1770,6 +1988,7 @@ R"====(
           if(el[0].type.indexOf('select')>-1){var ch=el[0].childNodes;for(var x=0;x<ch.length;x++){if(ch[x].value==j[k])ch[x].selected=true;}}
         }
       }
+      if(typeof updateGPIORowVisibility==='function')updateGPIORowVisibility();
       document.getElementById('loading_settings').style.display='none';
       document.getElementById('settings_form').style.display='block';
       changeMinWatt(1);changeMinWatt(2);
@@ -1792,6 +2011,7 @@ function changewifissid(){
 
 static const char populatescanwifiJS[] FLASHPROG = R"====(
 <script>
+var wifiScanTries=0;
 var refreshWifiScan=function(){
   var sel=document.getElementById('wifi_ssid_select');
   var req=new XMLHttpRequest();
@@ -1809,11 +2029,15 @@ var refreshWifiScan=function(){
         sel.appendChild(opt);
       });
       sel.style.display='block';
+      // scan results lag one HTTP poll behind on some boards, so poll fast
+      // for the first stretch after page load to avoid a long initial wait
+      wifiScanTries++;
+      var next=(list.length>1||wifiScanTries>10)?30000:3000;
+      setTimeout(refreshWifiScan,next);
     }
   };
   req.open('GET','/wifiscan',true);
   req.send();
-  setTimeout(refreshWifiScan,30000);
 };
 setTimeout(refreshWifiScan,500);
 </script>
@@ -1823,17 +2047,6 @@ setTimeout(refreshWifiScan,500);
 // RULES PAGE
 // ─────────────────────────────────────────────────────────────────────────────
 static const char showRulesPage1[] FLASHPROG = R"====(
-<script>
-document.addEventListener('DOMContentLoaded',function(){
-  var nav=document.getElementById('sideNav');
-  nav.innerHTML=`
-<a href="/"><span class="nav-icon">&#8634;</span> Home</a>
-<a href="/firmware"><span class="nav-icon">&#8679;</span> Firmware</a>
-<a href="/reboot" onclick="return confirm('Reboot the device?')"><span class="nav-icon">&#8635;</span> Reboot</a>
-<a href="/settings"><span class="nav-icon">&#9881;</span> Settings</a>
-`;
-});
-</script>
   <div style='display:flex;'>
     <div id='line-numbers' class='line-numbers'></div>
     <div id='rules' contenteditable='true' spellcheck='false' class='rules-editor'>)====";
@@ -2283,43 +2496,94 @@ function getCursorPosition() {
 // ─────────────────────────────────────────────────────────────────────────────
 static const char showFirmwarePage[] FLASHPROG = R"====(
 <script>
-document.addEventListener('DOMContentLoaded',function(){
-  var nav=document.getElementById('sideNav');
-  nav.innerHTML=`
-<a href="/"><span class="nav-icon">&#8634;</span> Home</a>
-<a href="/reboot" onclick="return confirm('Reboot the device?')"><span class="nav-icon">&#8635;</span> Reboot</a>
-<a href="/rules"><span class="nav-icon">&#8881;</span> Rules</a>
-<a href="/settings"><span class="nav-icon">&#9881;</span> Settings</a>
-`;
-});
-</script>
-<script>
 function getMD5(){
   var fn=document.getElementById('firmware').value;
   var sp=fn.split('-')[2];
   if(sp){var md5=sp.split('.')[0];if(md5.length==32)document.getElementById('md5').value=md5;}
 }
 function reloadHome(){setTimeout(function(){window.location.href='/';},15000);}
-function uploadFile(){
-  document.getElementById('updatebutton').disabled=true;
+function setButtons(off){
+  document.getElementById('updatebutton').disabled=off;
+  document.getElementById('installbutton').disabled=off;
+}
+function sendFirmware(file,name,md5){
+  setButtons(true);
   document.getElementById('status').innerText='';
-  var file=document.getElementById('firmware').files[0];
   var fd=new FormData();
-  fd.append('firmware',file);
-  fd.append('md5',document.getElementById('md5').value);
+  fd.append('firmware',file,name);
+  fd.append('md5',md5);
   var req=new XMLHttpRequest();
   req.upload.addEventListener('progress',function(e){document.getElementById('progressBar').value=Math.round((e.loaded/e.total)*100);},false);
   req.onreadystatechange=function(){
     if(req.readyState===4){
       document.getElementById('status').innerText=req.responseText;
       if(req.responseText.includes('success'))reloadHome();
-      else document.getElementById('updatebutton').disabled=false;
+      else setButtons(false);
     }
   };
   req.open('POST','/firmware');
   req.send(fd);
 }
-</script>
+function uploadFile(){
+  var file=document.getElementById('firmware').files[0];
+  if(!file){document.getElementById('status').innerText='Select a firmware file first.';return;}
+  sendFirmware(file,file.name,document.getElementById('md5').value);
+}
+// The browser gets the release from GitHub and uploads it like a file from disk: the HeishaMon itself never
+// connects to GitHub. The README and the binaries are added to the repository together by the release.
+var fwBase='https://raw.githubusercontent.com/heishamon/HeishaMon/main/binaries/';
+var fwLatest='';
+function fwGet(path,type){
+  return fetch(fwBase+path,{cache:'no-store'}).then(function(r){
+    if(!r.ok)throw new Error('GitHub answered '+r.status+' for '+path);
+    return type=='blob'?r.blob():r.text();
+  });
+}
+function checkLatest(){
+  var el=document.getElementById('latest');
+  fwGet('README.md','text').then(function(t){
+    var m=t.match(/latest production release is (v\d+(?:\.\d+)*)/);
+    if(!m)throw new Error('no release found');
+    fwLatest=m[1];
+    var cur=document.getElementById('sideVersion').textContent.trim();
+    if(cur==fwLatest){
+      el.innerText='This HeishaMon runs the latest release ('+fwLatest+').';
+    }else{
+      el.innerText='The latest release is '+fwLatest+', this HeishaMon runs '+cur+'.';
+      document.getElementById('installbutton').innerText='Download & install '+fwLatest;
+      document.getElementById('installbutton').style.display='';
+    }
+  }).catch(function(){
+    el.innerText='Could not look up the latest release. This browser needs internet access for that.';
+  });
+}
+function installLatest(){
+  var st=document.getElementById('status');
+  var name=fwFile+fwLatest;
+  setButtons(true);
+  st.innerText='Downloading '+fwLatest+' from GitHub...';
+  Promise.all([fwGet(fwDir+name+'.md5','text'),fwGet(fwDir+name+'.bin','blob')]).then(function(r){
+    var md5=r[0].trim().toLowerCase();
+    if(!/^[0-9a-f]{32}$/.test(md5))throw new Error('no valid MD5 checksum for '+fwLatest);
+    if(r[1].size<100000)throw new Error('the downloaded firmware is too small');
+    document.getElementById('md5').value=md5;
+    sendFirmware(r[1],name+'.bin',md5);
+    st.innerText='Uploading '+fwLatest+'...';
+  }).catch(function(e){
+    st.innerText='Download failed: '+e.message;
+    setButtons(false);
+  });
+}
+window.addEventListener('load',checkLatest);
+)===="
+#ifdef ESP32
+R"====(var fwDir='model-type-large/',fwFile='HeishaMon.ino.esp32-';
+)===="
+#else
+R"====(var fwDir='model-type-small/',fwFile='HeishaMon.ino.d1-';
+)===="
+#endif
+R"====(</script>
 <div class='firmware-container'>
   <div class='firmware-info'>
 )===="
@@ -2335,6 +2599,15 @@ R"====(    <strong>Board:</strong> HeishaMon Small (ESP8266)<br>
 )===="
 #endif
 R"====(  </div>
+  <div class='panel' style='margin-bottom:20px'>
+    <div class='panel-header'><h3>Latest Release</h3></div>
+    <div style='padding:24px'>
+      <p id='latest' style='margin:0'>Looking up the latest release...</p>
+      <div style='margin-top:20px'>
+        <button id='installbutton' class='btn btn-primary' style='display:none' onclick='installLatest()'>Download &amp; install</button>
+      </div>
+    </div>
+  </div>
   <div class='panel'>
     <div class='panel-header'><h3>Firmware Update</h3></div>
     <div style='padding:24px'>
@@ -2388,7 +2661,7 @@ static const char webBodySettingsNewWifiWarning[] FLASHPROG = R"====(
   <h2>Reconfiguring WiFi</h2>
   <p>Attempting to connect to the new access point.<br><br>
   The <strong style='color:var(--text-primary)'>Heishamon-Setup</strong> hotspot will be brought down automatically on success.<br><br>
-  This page will redirect to home shortly.</p>
+  This page will redirect to the device's new address shortly.</p>
 </div>
 )====";
 
@@ -2430,15 +2703,15 @@ const tzStruct tzdata[] FLASHPROG = {
   { "Africa/Blantyre", "CAT-2" },
   { "Africa/Brazzaville", "WAT-1" },
   { "Africa/Bujumbura", "CAT-2" },
-  { "Africa/Cairo", "EET-2" },
-  { "Africa/Casablanca", "<+01>-1" },
+  { "Africa/Cairo", "EET-2EEST,M4.5.5/0,M10.5.4/24" },
+  { "Africa/Casablanca", "<+00>0" },
   { "Africa/Ceuta", "CET-1CEST,M3.5.0,M10.5.0/3" },
   { "Africa/Conakry", "GMT0" },
   { "Africa/Dakar", "GMT0" },
   { "Africa/Dar_es_Salaam", "EAT-3" },
   { "Africa/Djibouti", "EAT-3" },
   { "Africa/Douala", "WAT-1" },
-  { "Africa/El_Aaiun", "<+01>-1" },
+  { "Africa/El_Aaiun", "<+00>0" },
   { "Africa/Freetown", "GMT0" },
   { "Africa/Gaborone", "CAT-2" },
   { "Africa/Harare", "CAT-2" },
@@ -2488,10 +2761,10 @@ const tzStruct tzdata[] FLASHPROG = {
   { "America/Argentina/Tucuman", "<-03>3" },
   { "America/Argentina/Ushuaia", "<-03>3" },
   { "America/Aruba", "AST4" },
-  { "America/Asuncion", "<-04>4<-03>,M10.1.0/0,M3.4.0/0" },
+  { "America/Asuncion", "<-03>3" },
   { "America/Atikokan", "EST5" },
   { "America/Bahia", "<-03>3" },
-  { "America/Bahia_Banderas", "CST6CDT,M4.1.0,M10.5.0" },
+  { "America/Bahia_Banderas", "CST6" },
   { "America/Barbados", "AST4" },
   { "America/Belem", "<-03>3" },
   { "America/Belize", "CST6" },
@@ -2506,7 +2779,7 @@ const tzStruct tzdata[] FLASHPROG = {
   { "America/Cayenne", "<-03>3" },
   { "America/Cayman", "EST5" },
   { "America/Chicago", "CST6CDT,M3.2.0,M11.1.0" },
-  { "America/Chihuahua", "MST7MDT,M4.1.0,M10.5.0" },
+  { "America/Chihuahua", "CST6" },
   { "America/Costa_Rica", "CST6" },
   { "America/Creston", "MST7" },
   { "America/Cuiaba", "<-04>4" },
@@ -2517,13 +2790,13 @@ const tzStruct tzdata[] FLASHPROG = {
   { "America/Denver", "MST7MDT,M3.2.0,M11.1.0" },
   { "America/Detroit", "EST5EDT,M3.2.0,M11.1.0" },
   { "America/Dominica", "AST4" },
-  { "America/Edmonton", "MST7MDT,M3.2.0,M11.1.0" },
+  { "America/Edmonton", "CST6" },
   { "America/Eirunepe", "<-05>5" },
   { "America/El_Salvador", "CST6" },
   { "America/Fortaleza", "<-03>3" },
   { "America/Fort_Nelson", "MST7" },
   { "America/Glace_Bay", "AST4ADT,M3.2.0,M11.1.0" },
-  { "America/Godthab", "<-03>3<-02>,M3.5.0/-2,M10.5.0/-1" },
+  { "America/Godthab", "<-02>2<-01>,M3.5.0/-1,M10.5.0/0" },
   { "America/Goose_Bay", "AST4ADT,M3.2.0,M11.1.0" },
   { "America/Grand_Turk", "EST5EDT,M3.2.0,M11.1.0" },
   { "America/Grenada", "AST4" },
@@ -2542,7 +2815,7 @@ const tzStruct tzdata[] FLASHPROG = {
   { "America/Indiana/Vevay", "EST5EDT,M3.2.0,M11.1.0" },
   { "America/Indiana/Vincennes", "EST5EDT,M3.2.0,M11.1.0" },
   { "America/Indiana/Winamac", "EST5EDT,M3.2.0,M11.1.0" },
-  { "America/Inuvik", "MST7MDT,M3.2.0,M11.1.0" },
+  { "America/Inuvik", "CST6" },
   { "America/Iqaluit", "EST5EDT,M3.2.0,M11.1.0" },
   { "America/Jamaica", "EST5" },
   { "America/Juneau", "AKST9AKDT,M3.2.0,M11.1.0" },
@@ -2559,14 +2832,14 @@ const tzStruct tzdata[] FLASHPROG = {
   { "America/Marigot", "AST4" },
   { "America/Martinique", "AST4" },
   { "America/Matamoros", "CST6CDT,M3.2.0,M11.1.0" },
-  { "America/Mazatlan", "MST7MDT,M4.1.0,M10.5.0" },
+  { "America/Mazatlan", "MST7" },
   { "America/Menominee", "CST6CDT,M3.2.0,M11.1.0" },
-  { "America/Merida", "CST6CDT,M4.1.0,M10.5.0" },
+  { "America/Merida", "CST6" },
   { "America/Metlakatla", "AKST9AKDT,M3.2.0,M11.1.0" },
-  { "America/Mexico_City", "CST6CDT,M4.1.0,M10.5.0" },
+  { "America/Mexico_City", "CST6" },
   { "America/Miquelon", "<-03>3<-02>,M3.2.0,M11.1.0" },
   { "America/Moncton", "AST4ADT,M3.2.0,M11.1.0" },
-  { "America/Monterrey", "CST6CDT,M4.1.0,M10.5.0" },
+  { "America/Monterrey", "CST6" },
   { "America/Montevideo", "<-03>3" },
   { "America/Montreal", "EST5EDT,M3.2.0,M11.1.0" },
   { "America/Montserrat", "AST4" },
@@ -2578,8 +2851,8 @@ const tzStruct tzdata[] FLASHPROG = {
   { "America/North_Dakota/Beulah", "CST6CDT,M3.2.0,M11.1.0" },
   { "America/North_Dakota/Center", "CST6CDT,M3.2.0,M11.1.0" },
   { "America/North_Dakota/New_Salem", "CST6CDT,M3.2.0,M11.1.0" },
-  { "America/Nuuk", "<-03>3<-02>,M3.5.0/-2,M10.5.0/-1" },
-  { "America/Ojinaga", "MST7MDT,M3.2.0,M11.1.0" },
+  { "America/Nuuk", "<-02>2<-01>,M3.5.0/-1,M10.5.0/0" },
+  { "America/Ojinaga", "CST6CDT,M3.2.0,M11.1.0" },
   { "America/Panama", "EST5" },
   { "America/Pangnirtung", "EST5EDT,M3.2.0,M11.1.0" },
   { "America/Paramaribo", "<-03>3" },
@@ -2589,7 +2862,7 @@ const tzStruct tzdata[] FLASHPROG = {
   { "America/Porto_Velho", "<-04>4" },
   { "America/Puerto_Rico", "AST4" },
   { "America/Punta_Arenas", "<-03>3" },
-  { "America/Rainy_River", "CST6CDT,M3.2.0,M11.1.0" },
+  { "America/Rainy_River", "EST5" },
   { "America/Rankin_Inlet", "CST6CDT,M3.2.0,M11.1.0" },
   { "America/Recife", "<-03>3" },
   { "America/Regina", "CST6" },
@@ -2599,7 +2872,7 @@ const tzStruct tzdata[] FLASHPROG = {
   { "America/Santiago", "<-04>4<-03>,M9.1.6/24,M4.1.6/24" },
   { "America/Santo_Domingo", "AST4" },
   { "America/Sao_Paulo", "<-03>3" },
-  { "America/Scoresbysund", "<-01>1<+00>,M3.5.0/0,M10.5.0/1" },
+  { "America/Scoresbysund", "<-02>2<-01>,M3.5.0/-1,M10.5.0/0" },
   { "America/Sitka", "AKST9AKDT,M3.2.0,M11.1.0" },
   { "America/St_Barthelemy", "AST4" },
   { "America/St_Johns", "NST3:30NDT,M3.2.0,M11.1.0" },
@@ -2614,12 +2887,12 @@ const tzStruct tzdata[] FLASHPROG = {
   { "America/Tijuana", "PST8PDT,M3.2.0,M11.1.0" },
   { "America/Toronto", "EST5EDT,M3.2.0,M11.1.0" },
   { "America/Tortola", "AST4" },
-  { "America/Vancouver", "PST8PDT,M3.2.0,M11.1.0" },
+  { "America/Vancouver", "MST7" },
   { "America/Whitehorse", "MST7" },
-  { "America/Winnipeg", "CST6CDT,M3.2.0,M11.1.0" },
+  { "America/Winnipeg", "EST5" },
   { "America/Yakutat", "AKST9AKDT,M3.2.0,M11.1.0" },
-  { "America/Yellowknife", "MST7MDT,M3.2.0,M11.1.0" },
-  { "Antarctica/Casey", "<+11>-11" },
+  { "America/Yellowknife", "CST6" },
+  { "Antarctica/Casey", "<+08>-8" },
   { "Antarctica/Davis", "<+07>-7" },
   { "Antarctica/DumontDUrville", "<+10>-10" },
   { "Antarctica/Macquarie", "AEST-10AEDT,M10.1.0,M4.1.0/3" },
@@ -2629,11 +2902,11 @@ const tzStruct tzdata[] FLASHPROG = {
   { "Antarctica/Rothera", "<-03>3" },
   { "Antarctica/Syowa", "<+03>-3" },
   { "Antarctica/Troll", "<+00>0<+02>-2,M3.5.0/1,M10.5.0/3" },
-  { "Antarctica/Vostok", "<+06>-6" },
+  { "Antarctica/Vostok", "<+05>-5" },
   { "Arctic/Longyearbyen", "CET-1CEST,M3.5.0,M10.5.0/3" },
   { "Asia/Aden", "<+03>-3" },
-  { "Asia/Almaty", "<+06>-6" },
-  { "Asia/Amman", "EET-2EEST,M2.5.4/24,M10.5.5/1" },
+  { "Asia/Almaty", "<+05>-5" },
+  { "Asia/Amman", "<+03>-3" },
   { "Asia/Anadyr", "<+12>-12" },
   { "Asia/Aqtau", "<+05>-5" },
   { "Asia/Aqtobe", "<+05>-5" },
@@ -2650,14 +2923,14 @@ const tzStruct tzdata[] FLASHPROG = {
   { "Asia/Chita", "<+09>-9" },
   { "Asia/Choibalsan", "<+08>-8" },
   { "Asia/Colombo", "<+0530>-5:30" },
-  { "Asia/Damascus", "EET-2EEST,M3.5.5/0,M10.5.5/0" },
+  { "Asia/Damascus", "<+03>-3" },
   { "Asia/Dhaka", "<+06>-6" },
   { "Asia/Dili", "<+09>-9" },
   { "Asia/Dubai", "<+04>-4" },
   { "Asia/Dushanbe", "<+05>-5" },
   { "Asia/Famagusta", "EET-2EEST,M3.5.0/3,M10.5.0/4" },
-  { "Asia/Gaza", "EET-2EEST,M3.4.4/48,M10.5.5/1" },
-  { "Asia/Hebron", "EET-2EEST,M3.4.4/48,M10.5.5/1" },
+  { "Asia/Gaza", "EET-2EEST,M3.4.4/50,M10.4.4/50" },
+  { "Asia/Hebron", "EET-2EEST,M3.4.4/50,M10.4.4/50" },
   { "Asia/Ho_Chi_Minh", "<+07>-7" },
   { "Asia/Hong_Kong", "HKT-8" },
   { "Asia/Hovd", "<+07>-7" },
@@ -2700,7 +2973,7 @@ const tzStruct tzdata[] FLASHPROG = {
   { "Asia/Taipei", "CST-8" },
   { "Asia/Tashkent", "<+05>-5" },
   { "Asia/Tbilisi", "<+04>-4" },
-  { "Asia/Tehran", "<+0330>-3:30<+0430>,J79/24,J263/24" },
+  { "Asia/Tehran", "<+0330>-3:30" },
   { "Asia/Thimphu", "<+06>-6" },
   { "Asia/Tokyo", "JST-9" },
   { "Asia/Tomsk", "<+07>-7" },
@@ -2746,7 +3019,7 @@ const tzStruct tzdata[] FLASHPROG = {
   { "Europe/Bucharest", "EET-2EEST,M3.5.0/3,M10.5.0/4" },
   { "Europe/Budapest", "CET-1CEST,M3.5.0,M10.5.0/3" },
   { "Europe/Busingen", "CET-1CEST,M3.5.0,M10.5.0/3" },
-  { "Europe/Chisinau", "EET-2EEST,M3.5.0,M10.5.0/3" },
+  { "Europe/Chisinau", "EET-2EEST,M3.5.0/3,M10.5.0/4" },
   { "Europe/Copenhagen", "CET-1CEST,M3.5.0,M10.5.0/3" },
   { "Europe/Dublin", "IST-1GMT0,M10.5.0,M3.5.0/1" },
   { "Europe/Gibraltar", "CET-1CEST,M3.5.0,M10.5.0/3" },
@@ -2757,7 +3030,7 @@ const tzStruct tzdata[] FLASHPROG = {
   { "Europe/Jersey", "GMT0BST,M3.5.0/1,M10.5.0" },
   { "Europe/Kaliningrad", "EET-2" },
   { "Europe/Kiev", "EET-2EEST,M3.5.0/3,M10.5.0/4" },
-  { "Europe/Kirov", "<+03>-3" },
+  { "Europe/Kirov", "MSK-3" },
   { "Europe/Lisbon", "WET0WEST,M3.5.0/1,M10.5.0" },
   { "Europe/Ljubljana", "CET-1CEST,M3.5.0,M10.5.0/3" },
   { "Europe/London", "GMT0BST,M3.5.0/1,M10.5.0" },
@@ -2790,7 +3063,7 @@ const tzStruct tzdata[] FLASHPROG = {
   { "Europe/Vatican", "CET-1CEST,M3.5.0,M10.5.0/3" },
   { "Europe/Vienna", "CET-1CEST,M3.5.0,M10.5.0/3" },
   { "Europe/Vilnius", "EET-2EEST,M3.5.0/3,M10.5.0/4" },
-  { "Europe/Volgograd", "<+03>-3" },
+  { "Europe/Volgograd", "MSK-3" },
   { "Europe/Warsaw", "CET-1CEST,M3.5.0,M10.5.0/3" },
   { "Europe/Zagreb", "CET-1CEST,M3.5.0,M10.5.0/3" },
   { "Europe/Zaporozhye", "EET-2EEST,M3.5.0/3,M10.5.0/4" },
@@ -2815,7 +3088,7 @@ const tzStruct tzdata[] FLASHPROG = {
   { "Pacific/Efate", "<+11>-11" },
   { "Pacific/Enderbury", "<+13>-13" },
   { "Pacific/Fakaofo", "<+13>-13" },
-  { "Pacific/Fiji", "<+12>-12<+13>,M11.2.0,M1.2.3/99" },
+  { "Pacific/Fiji", "<+12>-12" },
   { "Pacific/Funafuti", "<+12>-12" },
   { "Pacific/Galapagos", "<-06>6" },
   { "Pacific/Gambier", "<-09>9" },
@@ -3344,3 +3617,89 @@ static const char tzDataOptions[] FLASHPROG = R"====(
 <option value="459">Etc/Universal</option>
 <option value="460">Etc/Zulu</option>
 )====";
+
+
+#ifdef ESP32
+static const char webModbusStart[] FLASHPROG = R"====(
+<style>
+/* Modbus tables scroll inside their own containers, below the page header. */
+.modbus-page thead th{top:0}
+</style>
+<main class='main-content modbus-page'>
+  <h1 style='color:var(--accent);margin-bottom:16px'><span aria-hidden='true'>&#9432;</span> Modbus registers</h1>
+  <p>TCP port <strong>502</strong> &middot; Unit ID <strong>1</strong> &middot;
+     Addresses are <strong>zero-based</strong> protocol offsets (no 40001 prefix).
+     If your client uses one-based addresses, add 1.</p>
+  <p style='margin:12px 0'>Read values with FC03. Integer values are signed 16-bit.
+     Floats are IEEE 754 float32: read <strong>both registers</strong>, high word first (MSW / LSW), without scaling.
+     Temperatures in signed 16-bit registers are <strong>x100</strong>: divide by 100, 2050 means 20.50. Temperature commands (FC06) use the same x100 scale. Commands can also be written as an unscaled float32 with FC16.</p>
+  <p style='margin:16px 0'>The Modbus TCP server must be enabled in Settings. Writes (FC05 / FC06 / FC16) additionally require
+     <strong>Allow Modbus writes</strong>. The register map version is currently 3.</p>
+  <details style='margin:16px 0' open><summary>Fixed blocks with room to grow</summary>
+    <p>Each measurement group reserves 1,000 topics. Unused addresses are reserved and cannot be read yet.</p>
+    <div style='overflow-x:auto'><table>
+      <thead><tr><th>Group</th><th>Integer block</th><th>Float block</th></tr></thead>
+      <tbody><tr><td>Main (TOP)</td><td>0-999</td><td>10000-11999</td></tr>
+      <tr><td>Extra (XTOP)</td><td>1000-1999</td><td>12000-13999</td></tr>
+      <tr><td>Optional PCB (OPT)</td><td>2000-2999</td><td>14000-15999</td></tr>
+      <tr><td>S0 inputs</td><td>3000-3999</td><td>16000-17999</td></tr></tbody>
+    </table></div>
+    <p><strong>Float start = 10000 + 2 &times; integer address</strong>; the next register holds the low word.
+       Example: TOP139 uses integer 139 and float 10278 / 10279.</p>
+    <p>S0 1 starts at integer 3000 / float 16000; S0 2 at integer 3100 / float 16200.
+       Each input reserves 100 fields. Enable S0 and configure pulses/kWh in Settings.
+       Read floats for fractional energy and large totals; integer S0 values truncate fractions and stop at 32767.</p>
+  </details>
+  <div style='display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin:20px 0'>
+    <label for='registerSearch'>Find register</label>
+    <input id='registerSearch' class='setting-input' type='search' placeholder='Name or address, e.g. 12000' style='max-width:360px' disabled>
+    <label for='registerKind'>Access</label>
+    <select id='registerKind' disabled><option value=''>All</option><option value='read'>Read values</option><option value='write'>Write commands</option></select>
+    <span id='registerCount' role='status'>Loading registers...</span>
+  </div>
+  <div class='panel' style='overflow-x:auto'>
+    <table id='registerTable'>
+      <thead><tr><th>Group</th><th>Name</th><th>16-bit / coil address</th><th>Float32 MSW / LSW</th><th>Access</th><th>Scaling / notes</th></tr></thead>
+      <tbody>
+)====";
+
+static const char webModbusEnd[] FLASHPROG = R"====(
+      </tbody>
+    </table>
+  </div>
+  <p id='registerEmpty' hidden>No matching registers.</p>
+  <p style='margin-top:16px'>This page lists the map compiled into this firmware; it does not send commands.
+     Availability of readings depends on the heat pump, optional PCB and S0 configuration.
+     Non-numeric readings return 0; letter-prefixed error codes use a numeric block in the integer register.</p>
+</main>
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+  var search = document.getElementById('registerSearch');
+  var kind = document.getElementById('registerKind');
+  var rows = Array.from(document.querySelectorAll('#registerTable tbody tr'));
+  // One list in ascending order of the 16-bit / coil address.
+  rows.sort(function(a, b){
+    return parseInt(a.cells[2].textContent, 10) - parseInt(b.cells[2].textContent, 10);
+  });
+  var body = document.querySelector('#registerTable tbody');
+  rows.forEach(function(row){ body.appendChild(row); });
+  function filter(){
+    var query = search.value.trim().toLowerCase();
+    var count = 0;
+    rows.forEach(function(row){
+      var match = (!kind.value || row.dataset.kind === kind.value) && row.textContent.toLowerCase().includes(query);
+      row.hidden = !match;
+      if(match) count++;
+    });
+    document.getElementById('registerCount').textContent = count + ' / ' + rows.length + ' entries';
+    document.getElementById('registerEmpty').hidden = count !== 0;
+  }
+  search.disabled = false;
+  kind.disabled = false;
+  search.addEventListener('input', filter);
+  kind.addEventListener('change', filter);
+  filter();
+});
+</script>
+)====";
+#endif
