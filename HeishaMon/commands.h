@@ -219,6 +219,8 @@ const cmdStruct commands[] PROGMEM = {
   // 3, 6 or 9 kW
   { "SetInternalHeaterCapacity", CMD_INSTALLER, CMD_CHECKED(25, 2, 3, 9, 3, 3, 0) },
   // -- Zone 1 and sensors
+  // number of zones of the system: 1 or 2 (captured from the Service Cloud through the proxy port)
+  { "SetZonesInstalled", CMD_INSTALLER, CMD_CHECKED(21, 0, 1, 2, 1, 1, 0) },
   // 0 = room, 1 = pool
   { "SetZoneType", CMD_INSTALLER, CMD_OPTION(21, 2, 1) },
   // 0 = water temperature, 1 = external thermostat, 2 = internal thermostat, 3 = thermistor

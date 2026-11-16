@@ -34,7 +34,7 @@ De hele firmware staat in één Arduino-sketchmap: `HeishaMon/`. Er is geen apar
 ┌─────────────────┐    Serieel 9600 8E1    ┌──────────────┐  MQTT/HTTP/Modbus  ┌──────────────────┐
 │  Panasonic       │◄─────────────────────►│  HeishaMon    │◄──────────────────►│  Domotica        │
 │  Aquarea         │   203-byte pakketten  │  ESP8266/     │   199 topics       │  (Home Assistant, │
-│  Warmtepomp      │   110-byte commando's │  ESP32-S3     │  112 commando's    │   Domoticz, etc.) │
+│  Warmtepomp      │   110-byte commando's │  ESP32-S3     │  113 commando's    │   Domoticz, etc.) │
 └─────────────────┘                        └──────────────┘                    └──────────────────┘
                                                   │
                                            ┌──────┴──────┐
@@ -184,7 +184,7 @@ Web-UI-functies:
 | **HeishaMon.ino** | ~2440 | Hoofdprogramma: WiFi/MQTT, seriële communicatie, main loop, `mqtt_callback()` |
 | **decode.h** | ~1055 | Topic-namen, topic-groepen, byte-posities, conversiefuncties, beschrijvingen |
 | **decode.cpp** | ~500 | Decodering bytes → waarden, publicatie |
-| **commands.h** | ~330 | `commands[]` (112 rijen, waarvan 57 installer-menu), `optionalCommands[]` (14), macro's |
+| **commands.h** | ~330 | `commands[]` (113 rijen, waarvan 58 installer-menu), `optionalCommands[]` (14), macro's |
 | **commands.cpp** | ~430 | `heatpump_command()` + commando's met eigen functie |
 | **webfunctions.h/cpp** | ~1870 | HTTP-server, REST API, instellingen |
 | **htmlcode.h** | ~3700 | Ingebedde HTML/CSS/JS |
@@ -311,16 +311,16 @@ struct cmdStruct {
 | `CMD_TENTHS` | Als `CMD_STRICT`, maar met één decimaal; waarden in tienden |
 | `CMD_FUNC` | Eigen functie |
 
-Rijen schrijf je met macro's: `CMD_ONOFF(address, shift)`, `CMD_PAIR(address, shift, maximum)`, `CMD_TRIGGER`, `CMD_VALUE(address, offset)`, `CMD_FIELD(address, shift, mask, offset)`, `CMD_CHECKED(...)`, `CMD_DECIMAL(...)`, `CMD_FUNCTION(func)`, en voor de installer-commando's `CMD_OPTION(address, shift, maximum)`, `CMD_TEMP(address)`, `CMD_OFFSET(address, shift)` en `CMD_KW(address)`. Alleen `SetOperationMode`, `SetCurves`, `SetZones` en `SetExtraPump` hebben een eigen functie. Er zijn **112 hoofdcommando's** (waarvan 57 installer-menu) en **14 optional-PCB-commando's** (`optionalCommands[]`, elk met een eigen `set_*`-functie).
+Rijen schrijf je met macro's: `CMD_ONOFF(address, shift)`, `CMD_PAIR(address, shift, maximum)`, `CMD_TRIGGER`, `CMD_VALUE(address, offset)`, `CMD_FIELD(address, shift, mask, offset)`, `CMD_CHECKED(...)`, `CMD_DECIMAL(...)`, `CMD_FUNCTION(func)`, en voor de installer-commando's `CMD_OPTION(address, shift, maximum)`, `CMD_TEMP(address)`, `CMD_OFFSET(address, shift)` en `CMD_KW(address)`. Alleen `SetOperationMode`, `SetCurves`, `SetZones` en `SetExtraPump` hebben een eigen functie. Er zijn **113 hoofdcommando's** (waarvan 58 installer-menu) en **14 optional-PCB-commando's** (`optionalCommands[]`, elk met een eigen `set_*`-functie).
 
-### Installer-menu-commando's (SET56–SET113)
+### Installer-menu-commando's (SET56–SET114)
 
-Afkomstig uit upstream draft-PR [heishamon/HeishaMon#1081](https://github.com/heishamon/HeishaMon/pull/1081) (in deze fork gemerged voordat upstream hem heeft geaccepteerd; bij een volgende upstream-merge kunnen namen of de gate nog afwijken), plus `SetZ2SensorSettings` uit deze fork.
+Afkomstig uit upstream draft-PR [heishamon/HeishaMon#1081](https://github.com/heishamon/HeishaMon/pull/1081) (in deze fork gemerged voordat upstream hem heeft geaccepteerd; bij een volgende upstream-merge kunnen namen of de gate nog afwijken), plus `SetZ2SensorSettings` en `SetZonesInstalled` uit deze fork.
 
 - Gemarkeerd met `CMD_INSTALLER`: alleen geaccepteerd als de topic-groep **"Installer settings"** aan staat (standaard uit; toegepast bij boot en bij opslaan van de instellingen). Anders genegeerd en gelogd: "installer commands are not allowed".
 - Elk commando schrijft alleen zijn eigen bitpaar of nibble; de rest van de byte blijft 0 (= geen wijziging). Er zijn geen controles op andere instellingen of de toestand van de warmtepomp; afhankelijkheden staan in upstream-PR #1093.
 - SET-nummer = Modbus-commando-ID + 1; ID 100 is gereserveerd voor `SetReset`, dus SET101 bestaat niet.
-- Upstream alleen getest op de M-serie. In deze fork zijn `SetHeatingWaterMode`, `SetCoolingWaterMode`, `SetOptionalPCB`, `SetZ1SensorSettings` en `SetZ2SensorSettings` op echte hardware getest (waarde gewijzigd, readback gecontroleerd, teruggezet).
+- Upstream alleen getest op de M-serie. In deze fork zijn `SetHeatingWaterMode`, `SetCoolingWaterMode`, `SetOptionalPCB`, `SetZ1SensorSettings` en `SetZ2SensorSettings` op echte hardware getest; `SetZonesInstalled` is afgeleid uit een proxy-capture in beide richtingen (waarde gewijzigd, readback gecontroleerd, teruggezet).
 
 | Commando | Byte / bits | Waarden | Readback |
 |---|---|---|---|
@@ -329,14 +329,16 @@ Afkomstig uit upstream draft-PR [heishamon/HeishaMon#1081](https://github.com/he
 | `SetOptionalPCB` | 20, bits 1-0 | 0 = nee, 1 = ja (installer-menu, niet de optional-PCB-emulatie) | TOP110 |
 | `SetZ1SensorSettings` | 22, lage nibble | 0 = watertemperatuur, 1 = externe thermostaat, 2 = interne thermostaat, 3 = thermistor | TOP111 |
 | `SetZ2SensorSettings` | 22, hoge nibble | idem | TOP112 |
+| `SetZonesInstalled` | 21, bits 1-0 | 1 = één zone, 2 = twee zones (payload = aantal) | TOP146 (21/25 = één zone, 22/38 = twee) |
 
-Waarde + 1 wordt in het veld geschreven (`0x01`/`0x02` voor een bitpaar, nibble `1`–`4` voor de sensor). `SetZ2SensorSettings` is commando-ID 112 (Modbus-register 5111, SET113).
+Waarde + 1 wordt in het veld geschreven (`0x01`/`0x02` voor een bitpaar, nibble `1`–`4` voor de sensor). `SetZ2SensorSettings` is commando-ID 112 (Modbus-register 5111, SET113), `SetZonesInstalled` ID 113 (register 5112, SET114). Byte 21 bevat verder het type van zone 1 (bits 3-2, `SetZoneType`) en van zone 2 (bits 5-4, nog geen commando; volgens TOP146: 01 = kamer, 10 = zwembad).
 
 Aandachtspunten uit de praktijk:
 
 - Omschakelen tussen curve en direct kan de curvepunten verschuiven of resetten (upstream-issue #523, PR #1093); noteer de `*_Curve_*`-topics vooraf.
 - `SetOptionalPCB 0` zet de thermostaat-/optional-PCB-functies uit; test dat met de warmtepomp uit (`SetHeatpump 0`).
 - Het wijzigen van een sensor-offset stopte op de M-serie de compressor ongeveer 4 minuten.
+- Na het wisselen van het aantal zones past de warmtepomp zelf de actieve zones aan (byte 6, TOP94 `Zones_State`) en blijft dat zo na het terugzetten; zet ze daarna terug met `SetZones 2`. De instellingen van zone 2 (sensor in byte 22) bleven bewaard.
 
 ### Hoe een commando werkt
 
@@ -435,10 +437,11 @@ Om te vinden hoe je een instelling *schrijft*, laat je de CZ-TAW1 (Aquarea Servi
 python3 Tools/capture_tools.py proxy capture.log
 ```
 
-Dat toont per commando de bytes die niet 0 zijn. Gezien bij de systeeminstellingen (zone & sensor, optionele print):
+Dat toont per commando de bytes die niet 0 zijn. Gezien bij de systeeminstellingen (zone & sensor, aantal zones, optionele print):
 
 - De cloud stuurt eerst een commando met alleen `byte 4=0x01` (**warmtepomp uit**), en zet hem daarna niet altijd vanzelf weer aan. Controleer `Heatpump_State` na zo'n capture.
 - Daarna stuurt de cloud het hele systeeminstellingen-blok in één keer (bytes 20–27, 29, 45, 60–74, 102–103), niet alleen het gewijzigde veld; soms twee keer achter elkaar. Byte 28 (curve/direct) zat daar niet bij.
+- Gewone gebruikersinstellingen (zones aan/uit, tapwatertemperatuur) gaan zonder uitzetten, als één blok met bytes 4–9 en 42–44. Zone aan/uit is byte 6 bits 7-6 (`SetZones`); let op dat het Panasonic-menu ook "zone uit" kent naast "zonesysteem", dus controleer welke instelling je echt omzet.
 - Kies testwaarden die per veld **verschillen**: met beide zones op dezelfde waarde (`0x11`, `0x22`) kon je niet zien welke nibble bij welke zone hoort; pas `0x34` (Z1 thermistor, Z2 interne thermostaat) bewees het.
 - Een sensortype zonder aangesloten sensor kan een foutcode geven (H43/H28); zet het na de capture meteen terug.
 
