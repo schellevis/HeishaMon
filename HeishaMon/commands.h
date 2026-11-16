@@ -223,6 +223,8 @@ const cmdStruct commands[] PROGMEM = {
   { "SetZoneType", CMD_INSTALLER, CMD_OPTION(21, 2, 1) },
   // 0 = water temperature, 1 = external thermostat, 2 = internal thermostat, 3 = thermistor
   { "SetZ1SensorSettings", CMD_INSTALLER, CMD_CHECKED(22, 0, 0, 3, 1, 1, 1) },
+  // zone 2, same values, high nibble of byte 22 (captured from the Service Cloud through the proxy port)
+  { "SetZ2SensorSettings", CMD_INSTALLER, CMD_CHECKED(22, 4, 0, 3, 1, 1, 1) },
   // sensor offsets in K
   { "SetSensorOffsetRemoteTh1", CMD_INSTALLER, CMD_OFFSET(35, 4) },
   { "SetSensorOffsetOutdoor", CMD_INSTALLER, CMD_OFFSET(35, 0) },

@@ -2,7 +2,7 @@
 
 Richtlijnen en projectoverzicht voor (AI-)ontwikkelaars die aan deze repository werken. Dit is het enige centrale document; `CLAUDE.md` verwijst hiernaar.
 
-> Bijgewerkt na de merge met upstream `heishamon/HeishaMon` t/m release **v4.4.0** (november 2026).
+> Bijgewerkt na de merge met upstream `heishamon/HeishaMon` t/m release **v4.4.0** (november 2026), plus de upstream draft-PR [heishamon/HeishaMon#1081](https://github.com/heishamon/HeishaMon/pull/1081) (installer-menu-commando's) en het eigen commando `SetZ2SensorSettings` (zie §6).
 
 **Lees eerst** de `heishamon-rules` skill in `Examples/Rules/SKILL.md` voordat je een rules-engine-bestand (`rules.txt`, `src/rules/`) schrijft of wijzigt.
 
@@ -34,7 +34,7 @@ De hele firmware staat in één Arduino-sketchmap: `HeishaMon/`. Er is geen apar
 ┌─────────────────┐    Serieel 9600 8E1    ┌──────────────┐  MQTT/HTTP/Modbus  ┌──────────────────┐
 │  Panasonic       │◄─────────────────────►│  HeishaMon    │◄──────────────────►│  Domotica        │
 │  Aquarea         │   203-byte pakketten  │  ESP8266/     │   199 topics       │  (Home Assistant, │
-│  Warmtepomp      │   110-byte commando's │  ESP32-S3     │   69 commando's    │   Domoticz, etc.) │
+│  Warmtepomp      │   110-byte commando's │  ESP32-S3     │  112 commando's    │   Domoticz, etc.) │
 └─────────────────┘                        └──────────────┘                    └──────────────────┘
                                                   │
                                            ┌──────┴──────┐
@@ -97,6 +97,21 @@ Benodigde board-cores: `esp8266:esp8266` en `esp32:esp32@3.3.11`. Er is een devc
 
 Verder is verificatie: compileert het voor beide boards, en (waar mogelijk) handmatig testen met echte hardware of gelogde seriële captures. Draai `Examples/Rules/run_tests.sh` na elke wijziging in `src/rules/`, `src/common/timerqueue.cpp`, de decode-/commandotabellen of een voorbeeld-ruleset.
 
+**macOS:** `test_commands.py`, `test_decode.py` en de Modbus-tests draaien gewoon. De rules-harness bouwt op macOS niet (Apple clang: *cannot jump from this indirect goto*; Homebrew `g++-16`: linker-fout *pointer not aligned*), ook niet op een schone `main`. Draai die in de devcontainer, een Linux-container met `gcc`, of laat CI hem draaien. `arduino-cli` op macOS werkt wel; installeer de core met `arduino-cli core install esp32:esp32@3.3.11` en de libraries zoals hierboven.
+
+### Rooktest in QEMU (ESP32-S3)
+
+Er is geen hardware-in-the-loop, maar Espressifs QEMU-fork (`qemu-system-xtensa -machine esp32s3`, release-assets op `github.com/espressif/qemu`) kan controleren of de firmware zonder crash door `setup()` komt. Werk in een kopie van de sketch buiten de repo; de productie-`.bin` niet aanraken.
+
+1. Bouw met `CDCOnBoot=default` (en eventueel `DebugLevel=info`): de echte build logt via USB-CDC (`loggingSerial` = `Serial`), en die emuleert QEMU niet, dus anders zie je na de bootloader niets.
+2. Vervang in de kopie `Adafruit_NeoPixel pixels(1, LEDPIN);` door een stub: QEMU heeft geen RMT, `pixels.show()` blijft hangen.
+3. Vervang de `setupWifi(...)`-aanroep in `setup()` door `esp_netif_init();`, en schakel `setupETH()` en `check_wifi()` in `loop()` uit: QEMU heeft geen wifi en geen W5500.
+4. Draai `qemu-system-xtensa -nographic -machine esp32s3 -m 8M -drive file=<merged.bin>,if=mtd,format=raw -serial file:serial.log`. Writes naar flash komen in het image terecht, dus start daarna nog een keer met hetzelfde image.
+
+Te verwachten: de eerste boot formatteert LittleFS en blijft daarna bewust knipperen (first-boot-lus); de tweede boot doorloopt alle setup-stappen ("Enabling rules..") en de loop stuurt queries (timeout, geen warmtepomp). De melding "Factory reset request detected" komt door QEMU: GPIO0 (bootknop) leest daar als ingedrukt. Wifi, ethernet, de led en echte seriële communicatie blijven ongetest.
+
+**Let op bij flashen:** er is geen automatische OTA-rollback (`Update.begin` zonder rollback-markering). Firmware die bij het booten crasht, krijg je alleen via USB terug; houd de vorige `.bin` bij de hand. De OTA-pagina vraagt de MD5 van `HeishaMon.ino.bin`, niet van `merged.bin`.
+
 ### CI
 
 - `.github/workflows/main.yml`: bouwt beide boards en draait de decode-, command- en Modbus-tests bij tags, PR's en nightly; nooit een gewone build bij een kale push naar `main`.
@@ -156,7 +171,7 @@ Web-UI-functies:
 | `HeatPumpType.md` | Bevestigd ondersteunde warmtepompmodellen |
 | `Examples/Rules/` | Voorbeeld-rulesets, `SKILL.md`, host-testharnas, `run_tests.sh` |
 | `tests/modbus/` | Host-tests Modbus |
-| `Tools/` | `chksumChecker.js`, `capture_tools.py`, `test_commands.py`, `test_decode.py` |
+| `Tools/` | `chksumChecker.js`, `capture_tools.py` (`diff` / `proxy` / `rawcmd`, zie §8.1), `test_commands.py`, `test_decode.py` |
 | `Integrations/` | Home Assistant, Domoticz, OpenHAB, Node-RED, ioBroker (submodules: `Integrations/Domoticz/HeishamonMQTT`, `Integrations/NodeRed`) |
 | `binaries/` | Voorgecompileerde firmware (`model-type-small` / `model-type-large`) |
 | `scripts/` | Build-scripts |
@@ -169,7 +184,7 @@ Web-UI-functies:
 | **HeishaMon.ino** | ~2440 | Hoofdprogramma: WiFi/MQTT, seriële communicatie, main loop, `mqtt_callback()` |
 | **decode.h** | ~1055 | Topic-namen, topic-groepen, byte-posities, conversiefuncties, beschrijvingen |
 | **decode.cpp** | ~500 | Decodering bytes → waarden, publicatie |
-| **commands.h** | ~220 | `commands[]` (69 rijen), `optionalCommands[]` (14), macro's |
+| **commands.h** | ~330 | `commands[]` (112 rijen, waarvan 57 installer-menu), `optionalCommands[]` (14), macro's |
 | **commands.cpp** | ~430 | `heatpump_command()` + commando's met eigen functie |
 | **webfunctions.h/cpp** | ~1870 | HTTP-server, REST API, instellingen |
 | **htmlcode.h** | ~3700 | Ingebedde HTML/CSS/JS |
@@ -296,7 +311,32 @@ struct cmdStruct {
 | `CMD_TENTHS` | Als `CMD_STRICT`, maar met één decimaal; waarden in tienden |
 | `CMD_FUNC` | Eigen functie |
 
-Rijen schrijf je met macro's: `CMD_ONOFF(address, shift)`, `CMD_PAIR(address, shift, maximum)`, `CMD_TRIGGER`, `CMD_VALUE(address, offset)`, `CMD_FIELD(address, shift, mask, offset)`, `CMD_CHECKED(...)`, `CMD_DECIMAL(...)`, `CMD_FUNCTION(func)`. Alleen `SetOperationMode`, `SetCurves` en `SetZones` hebben nog een eigen functie. Er zijn **69 hoofdcommando's** en **14 optional-PCB-commando's** (`optionalCommands[]`, elk met een eigen `set_*`-functie).
+Rijen schrijf je met macro's: `CMD_ONOFF(address, shift)`, `CMD_PAIR(address, shift, maximum)`, `CMD_TRIGGER`, `CMD_VALUE(address, offset)`, `CMD_FIELD(address, shift, mask, offset)`, `CMD_CHECKED(...)`, `CMD_DECIMAL(...)`, `CMD_FUNCTION(func)`, en voor de installer-commando's `CMD_OPTION(address, shift, maximum)`, `CMD_TEMP(address)`, `CMD_OFFSET(address, shift)` en `CMD_KW(address)`. Alleen `SetOperationMode`, `SetCurves`, `SetZones` en `SetExtraPump` hebben een eigen functie. Er zijn **112 hoofdcommando's** (waarvan 57 installer-menu) en **14 optional-PCB-commando's** (`optionalCommands[]`, elk met een eigen `set_*`-functie).
+
+### Installer-menu-commando's (SET56–SET113)
+
+Afkomstig uit upstream draft-PR [heishamon/HeishaMon#1081](https://github.com/heishamon/HeishaMon/pull/1081) (in deze fork gemerged voordat upstream hem heeft geaccepteerd; bij een volgende upstream-merge kunnen namen of de gate nog afwijken), plus `SetZ2SensorSettings` uit deze fork.
+
+- Gemarkeerd met `CMD_INSTALLER`: alleen geaccepteerd als de topic-groep **"Installer settings"** aan staat (standaard uit; toegepast bij boot en bij opslaan van de instellingen). Anders genegeerd en gelogd: "installer commands are not allowed".
+- Elk commando schrijft alleen zijn eigen bitpaar of nibble; de rest van de byte blijft 0 (= geen wijziging). Er zijn geen controles op andere instellingen of de toestand van de warmtepomp; afhankelijkheden staan in upstream-PR #1093.
+- SET-nummer = Modbus-commando-ID + 1; ID 100 is gereserveerd voor `SetReset`, dus SET101 bestaat niet.
+- Upstream alleen getest op de M-serie. In deze fork zijn `SetHeatingWaterMode`, `SetCoolingWaterMode`, `SetOptionalPCB`, `SetZ1SensorSettings` en `SetZ2SensorSettings` op echte hardware getest (waarde gewijzigd, readback gecontroleerd, teruggezet).
+
+| Commando | Byte / bits | Waarden | Readback |
+|---|---|---|---|
+| `SetHeatingWaterMode` | 28, bits 1-0 | 0 = compensatiecurve, 1 = direct | TOP76 |
+| `SetCoolingWaterMode` | 28, bits 3-2 | 0 = compensatiecurve, 1 = direct | TOP81 |
+| `SetOptionalPCB` | 20, bits 1-0 | 0 = nee, 1 = ja (installer-menu, niet de optional-PCB-emulatie) | TOP110 |
+| `SetZ1SensorSettings` | 22, lage nibble | 0 = watertemperatuur, 1 = externe thermostaat, 2 = interne thermostaat, 3 = thermistor | TOP111 |
+| `SetZ2SensorSettings` | 22, hoge nibble | idem | TOP112 |
+
+Waarde + 1 wordt in het veld geschreven (`0x01`/`0x02` voor een bitpaar, nibble `1`–`4` voor de sensor). `SetZ2SensorSettings` is commando-ID 112 (Modbus-register 5111, SET113).
+
+Aandachtspunten uit de praktijk:
+
+- Omschakelen tussen curve en direct kan de curvepunten verschuiven of resetten (upstream-issue #523, PR #1093); noteer de `*_Curve_*`-topics vooraf.
+- `SetOptionalPCB 0` zet de thermostaat-/optional-PCB-functies uit; test dat met de warmtepomp uit (`SetHeatpump 0`).
+- Het wijzigen van een sensor-offset stopte op de M-serie de compressor ongeveer 4 minuten.
 
 ### Hoe een commando werkt
 
@@ -308,10 +348,10 @@ Rijen schrijf je met macro's: `CMD_ONOFF(address, shift)`, `CMD_PAIR(address, sh
 
 ### Een commando toevoegen
 
-1. Voeg een rij toe aan `commands[]` met de passende macro
-2. Geef het een nieuw, **nooit hergebruikt** ID in `MAIN_COMMANDS` in `ModbusRegisterMap.h` (een `static_assert` bewaakt dat beide tabellen even lang zijn)
-3. Voeg verwachte datagrammen toe in `Tools/test_commands.py` en draai die test
-4. Documenteer in `MQTT-Topics.md` (en `Modbus-Register-Mapping.md`)
+1. Voeg een rij toe aan `commands[]` met de passende macro (installer-instelling: flag `CMD_INSTALLER`)
+2. Geef het een nieuw, **nooit hergebruikt** ID in `MAIN_COMMANDS` in `ModbusRegisterMap.h` (een `static_assert` bewaakt dat beide tabellen even lang zijn; commando's worden op naam gematcht, de volgorde maakt niet uit)
+3. Voeg verwachte datagrammen toe in `Tools/test_commands.py` (beide tabellen: de vastgelegde bytes én de grenzen/geweigerde payloads) en draai die test. Bij een nieuw installer-commando ook de telling `assert(flagged == …)` ophogen
+4. Documenteer in `MQTT-Topics.md` (SET-rij, SET-nummer = ID + 1) en `Modbus-Register-Mapping.md` (register 5000 + ID − 1, plus het bereik in de overzichtstabel)
 
 ---
 
@@ -386,6 +426,23 @@ Aandachtspunten:
 - Temperaturen meestal `waarde − 128`, tellers vaak `waarde − 1`, sensor-offsets in nibbles
 - Bytes 0–3 zijn header, byte 202 is de checksum
 - Gebruik **listen-only** in de instellingen als je alleen wilt meeluisteren
+
+**Methode 4: commando's meelezen via de proxypoort (ESP32)**
+
+Om te vinden hoe je een instelling *schrijft*, laat je de CZ-TAW1 (Aquarea Service Cloud / Smart Cloud) het werk doen. Zet HeishaMon in proxymodus met de CZ-TAW1 op de proxypoort en zet Hexdump aan. Elk schrijfcommando van de cloud verschijnt dan als `PROXY Received 111 bytes` (header `F1`) met `data:`-regels. Sla het log op (console kopiëren, of het MQTT-`log`-topic met "Log to MQTT" aan) en draai:
+
+```bash
+python3 Tools/capture_tools.py proxy capture.log
+```
+
+Dat toont per commando de bytes die niet 0 zijn. Gezien bij de systeeminstellingen (zone & sensor, optionele print):
+
+- De cloud stuurt eerst een commando met alleen `byte 4=0x01` (**warmtepomp uit**), en zet hem daarna niet altijd vanzelf weer aan. Controleer `Heatpump_State` na zo'n capture.
+- Daarna stuurt de cloud het hele systeeminstellingen-blok in één keer (bytes 20–27, 29, 45, 60–74, 102–103), niet alleen het gewijzigde veld; soms twee keer achter elkaar. Byte 28 (curve/direct) zat daar niet bij.
+- Kies testwaarden die per veld **verschillen**: met beide zones op dezelfde waarde (`0x11`, `0x22`) kon je niet zien welke nibble bij welke zone hoort; pas `0x34` (Z1 thermistor, Z2 interne thermostaat) bewees het.
+- Een sensortype zonder aangesloten sensor kan een foutcode geven (H43/H28); zet het na de capture meteen terug.
+
+Gebruik `capture_tools.py diff` om daarnaast in het statuspakket te controleren dat de readback-topic meeverandert, en `capture_tools.py rawcmd 22=10` om een commando met losse bytes te bouwen voor het `SendRawValue`-topic.
 
 ### 8.2 Een nieuw hoofdtopic toevoegen
 

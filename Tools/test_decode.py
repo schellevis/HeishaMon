@@ -43,7 +43,6 @@ public:
 #define memcpy_P memcpy
 #define snprintf_P snprintf
 #define sprintf_P sprintf
-#define snprintf_P snprintf
 unsigned long millis() { return 1; }
 unsigned int word(char high, char low) {
   return (static_cast<byte>(high) << 8) | static_cast<byte>(low);

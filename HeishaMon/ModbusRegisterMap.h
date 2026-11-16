@@ -185,6 +185,7 @@ constexpr MainCommand MAIN_COMMANDS[] = {
   {109, "SetSGReadyCoolPower2", false},
   {110, "SetSGReadyStopPower", false},
   {111, "SetDemandControlEnable", false},
+  {112, "SetZ2SensorSettings", false},
   {RESET_COMMAND_ID, "SetReset", false},
 };
 
