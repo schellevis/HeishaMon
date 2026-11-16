@@ -2,7 +2,7 @@
 
 Richtlijnen en projectoverzicht voor (AI-)ontwikkelaars die aan deze repository werken. Dit is het enige centrale document; `CLAUDE.md` verwijst hiernaar.
 
-> Bijgewerkt na de merge met upstream `heishamon/HeishaMon` t/m release **v4.4.0** (november 2026), plus de upstream draft-PR [heishamon/HeishaMon#1081](https://github.com/heishamon/HeishaMon/pull/1081) (installer-menu-commando's) en het eigen commando `SetZ2SensorSettings` (zie §6).
+> Bijgewerkt na de merge met upstream `heishamon/HeishaMon` t/m release **v4.4.0** (november 2026), plus de upstream draft-PR [heishamon/HeishaMon#1081](https://github.com/heishamon/HeishaMon/pull/1081) (installer-menu-commando's) en de eigen commando's `SetZ2SensorSettings` en `SetZonesInstalled` (zie §6), die als draft-PR [heishamon/HeishaMon#1117](https://github.com/heishamon/HeishaMon/pull/1117) upstream zijn aangeboden.
 
 **Lees eerst** de `heishamon-rules` skill in `Examples/Rules/SKILL.md` voordat je een rules-engine-bestand (`rules.txt`, `src/rules/`) schrijft of wijzigt.
 
@@ -315,12 +315,12 @@ Rijen schrijf je met macro's: `CMD_ONOFF(address, shift)`, `CMD_PAIR(address, sh
 
 ### Installer-menu-commando's (SET56–SET114)
 
-Afkomstig uit upstream draft-PR [heishamon/HeishaMon#1081](https://github.com/heishamon/HeishaMon/pull/1081) (in deze fork gemerged voordat upstream hem heeft geaccepteerd; bij een volgende upstream-merge kunnen namen of de gate nog afwijken), plus `SetZ2SensorSettings` en `SetZonesInstalled` uit deze fork.
+Afkomstig uit upstream draft-PR [heishamon/HeishaMon#1081](https://github.com/heishamon/HeishaMon/pull/1081) (in deze fork gemerged voordat upstream hem heeft geaccepteerd; bij een volgende upstream-merge kunnen namen of de gate nog afwijken), plus `SetZ2SensorSettings` en `SetZonesInstalled` uit deze fork. Die twee zijn upstream aangeboden in draft-PR [heishamon/HeishaMon#1117](https://github.com/heishamon/HeishaMon/pull/1117), gebaseerd op de head van #1081 (`6ec97ae`), met dezelfde ID's 112/113. Houd namen en ID's in deze fork gelijk aan die PR; wijzigt de review iets, trek het hier gelijk.
 
 - Gemarkeerd met `CMD_INSTALLER`: alleen geaccepteerd als de topic-groep **"Installer settings"** aan staat (standaard uit; toegepast bij boot en bij opslaan van de instellingen). Anders genegeerd en gelogd: "installer commands are not allowed".
 - Elk commando schrijft alleen zijn eigen bitpaar of nibble; de rest van de byte blijft 0 (= geen wijziging). Er zijn geen controles op andere instellingen of de toestand van de warmtepomp; afhankelijkheden staan in upstream-PR #1093.
 - SET-nummer = Modbus-commando-ID + 1; ID 100 is gereserveerd voor `SetReset`, dus SET101 bestaat niet.
-- Upstream alleen getest op de M-serie. In deze fork zijn `SetHeatingWaterMode`, `SetCoolingWaterMode`, `SetOptionalPCB`, `SetZ1SensorSettings` en `SetZ2SensorSettings` op echte hardware getest; `SetZonesInstalled` is afgeleid uit een proxy-capture in beide richtingen (waarde gewijzigd, readback gecontroleerd, teruggezet).
+- Upstream alleen getest op de M-serie. In deze fork zijn `SetHeatingWaterMode`, `SetCoolingWaterMode`, `SetOptionalPCB`, `SetZ1SensorSettings`, `SetZ2SensorSettings` en `SetZonesInstalled` op een J-serie met twee zones getest (waarde gewijzigd, readback gecontroleerd, teruggezet). De bytes van de laatste twee komen uit proxy-captures van de Service Cloud (zie §8.1).
 
 | Commando | Byte / bits | Waarden | Readback |
 |---|---|---|---|
@@ -331,6 +331,8 @@ Afkomstig uit upstream draft-PR [heishamon/HeishaMon#1081](https://github.com/he
 | `SetZ2SensorSettings` | 22, hoge nibble | idem | TOP112 |
 | `SetZonesInstalled` | 21, bits 1-0 | 1 = één zone, 2 = twee zones (payload = aantal) | TOP146 (21/25 = één zone, 22/38 = twee) |
 
+`SetZonesInstalled` gaat over hoeveel zones het systeem *heeft* (installer-menu "Zone & sensor"), niet over welke zones *ingeschakeld* zijn; dat is `SetZones` (byte 6, bits 7-6, readback TOP94 en TOP165/166). De payload is het aantal (1/2) en niet 0/1 zoals bij `CMD_OPTION`; #1081 doet hetzelfde bij `SetInternalHeaterCapacity` (3/6/9). Een apart topic met alleen het aantal bestaat niet: neem `TOP146 % 4`.
+
 Waarde + 1 wordt in het veld geschreven (`0x01`/`0x02` voor een bitpaar, nibble `1`–`4` voor de sensor). `SetZ2SensorSettings` is commando-ID 112 (Modbus-register 5111, SET113), `SetZonesInstalled` ID 113 (register 5112, SET114). Byte 21 bevat verder het type van zone 1 (bits 3-2, `SetZoneType`) en van zone 2 (bits 5-4, nog geen commando; volgens TOP146: 01 = kamer, 10 = zwembad).
 
 Aandachtspunten uit de praktijk:
@@ -339,6 +341,7 @@ Aandachtspunten uit de praktijk:
 - `SetOptionalPCB 0` zet de thermostaat-/optional-PCB-functies uit; test dat met de warmtepomp uit (`SetHeatpump 0`).
 - Het wijzigen van een sensor-offset stopte op de M-serie de compressor ongeveer 4 minuten.
 - Na het wisselen van het aantal zones past de warmtepomp zelf de actieve zones aan (byte 6, TOP94 `Zones_State`) en blijft dat zo na het terugzetten; zet ze daarna terug met `SetZones 2`. De instellingen van zone 2 (sensor in byte 22) bleven bewaard.
+- Open punt: met "zone 1 uit" in de gebruikersinterface van de cloud werd byte 6 bits 7-6 `01` en TOP94 `0`, wat volgens MQTT-Topics.md "zone 1 actief" betekent. Mogelijk zijn de labels 0/1 van TOP94 en `SetZones` verwisseld; nog niet bevestigd welke zone toen aan bleef.
 
 ### Hoe een commando werkt
 
@@ -500,6 +503,17 @@ Na compileren en flashen verschijnt het topic automatisch als `{mqtt_topic_base}
 ## 9. Versies, releases en referentiedocumentatie
 
 `HeishaMon/version.h` bevat `HEISHAMON_VERSION`; CI overschrijft die per ref (tag → release/tagnaam, scheduled/dispatch → `Nightly-<sha>`, anders `Alpha-<sha>`). Nightly-builds maken de release en tag elke build opnieuw aan. Binaries heten `HeishaMon_ESP8266-<type>-<md5>.bin` / `HeishaMon_ESP32-<type>-<md5>.bin`; `binaries/` bevat de vrijgegeven firmware voor eindgebruikers (`model-type-small` = ESP8266, `model-type-large` = ESP32-S3).
+
+### Bijdragen aan upstream
+
+Deze fork bevat werk dat upstream (nog) niet heeft, en een eigen Nederlandstalige `AGENTS.md`. Een upstream-PR maak je daarom nooit vanaf een fork-branch, maar vanaf een schone branch:
+
+- Basis: upstream `main`, of de head-commit van de upstream-PR waarop je voortbouwt (zoals #1117 op #1081). Open de PR dan als draft met "Depends on #…" tot die andere PR gemerged is; tot dan toont GitHub ook diens commits.
+- Alleen code, tests en de Engelstalige documentatie (`MQTT-Topics.md`, `Modbus-Register-Mapping.md`, eventueel `ProtocolByteDecrypt.md`); geen `AGENTS.md`, geen build-output of captures.
+- Volg de stijl van de tabel waar je in werkt: in `commands.h` alleen de waarden als commentaar, de herkomst (captures) hoort in de PR-beschrijving en de docs.
+- Modbus-ID's en SET-nummers zijn permanent: kies ze direct na die van de PR waarop je voortbouwt en stem af met die auteur.
+- Maintainers vragen om kleine PR's die één ding doen; splits liever op.
+- Geen persoonlijke gegevens, IP-adressen of MQTT-inloggegevens in commits, PR's of reacties.
 
 Referentiedocumentatie:
 
